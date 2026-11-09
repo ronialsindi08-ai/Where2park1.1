@@ -4,8 +4,10 @@ import cv2
 import numpy as np
 from PIL import Image
 from ultralytics import YOLO
+import folium
+from streamlit_folium import st_folium
 
-# 1. Seitenkonfiguration & Custom CSS für Mobile UI ohne Abschneiden oben & mit starkem Kontrast
+# 1. Seitenkonfiguration für Mobile UI
 st.set_page_config(
     page_title="Where to Park",
     page_icon="🅿️",
@@ -13,23 +15,23 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# Custom Styling (Farben, Abstände & Kontrast nach Bildvorlage)
 st.markdown("""
     <style>
-    /* Oberen Abstand vergrößern, damit nichts abgeschnitten wird */
     .block-container {
         max-width: 450px;
-        padding-top: 3rem;
+        padding-top: 2.5rem;
         padding-bottom: 3rem;
     }
     .stButton>button {
         width: 100%;
-        background-color: #0f4c81;
+        background-color: #0d6efd;
         color: white;
-        border-radius: 10px;
-        height: 3em;
+        border-radius: 8px;
+        height: 2.8em;
         font-weight: bold;
+        border: none;
     }
-    /* Kontrastreiche Badges für Status */
     .badge-free {
         background-color: #198754;
         color: white;
@@ -48,58 +50,57 @@ st.markdown("""
         font-size: 0.85rem;
         float: right;
     }
-    /* Weißer Karten-Hintergrund mit dunklem Text für optimalen Kontrast */
     .spot-card {
         background-color: #ffffff;
-        border: 1px solid #ced4da;
-        border-radius: 10px;
-        padding: 15px;
+        border: 1px solid #dee2e6;
+        border-radius: 12px;
+        padding: 14px;
         margin-bottom: 12px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.08);
-        color: #111111;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        color: #212529;
     }
     .spot-title {
         font-size: 1.1rem;
         font-weight: bold;
-        color: #0f4c81;
+        color: #0b5ed7;
     }
     .spot-info {
         font-size: 0.9rem;
-        color: #444444;
-        margin-top: 5px;
+        color: #495057;
+        margin-top: 4px;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# Modell laden (gecached)
+# YOLOv8 Modell laden
 @st.cache_resource
 def load_yolo_model():
     return YOLO("yolov8n.pt")
 
 model = load_yolo_model()
 
-# Session State für Login und feste Parkflächen-Daten initialisieren
+# Session State Initialisierung
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "license_plate" not in st.session_state:
     st.session_state.license_plate = ""
 
-# Feste Basis-Daten für P1 bis P10 (Entfernung und Tarif bleiben immer gleich)
+# Feste Basis-Daten für P1 bis P10 mit GPS-Koordinaten für die Karte
 BASE_SPOTS = [
-    {"name": "P1", "distance": 0.3, "price": "1.50 €/Std."},
-    {"name": "P2", "distance": 0.7, "price": "2.00 €/Std."},
-    {"name": "P3", "distance": 1.1, "price": "1.00 €/Std."},
-    {"name": "P4", "distance": 1.4, "price": "1.50 €/Std."},
-    {"name": "P5", "distance": 1.8, "price": "2.50 €/Std."},
-    {"name": "P6", "distance": 2.1, "price": "1.00 €/Std."},
-    {"name": "P7", "distance": 2.5, "price": "2.00 €/Std."},
-    {"name": "P8", "distance": 0.5, "price": "1.50 €/Std."},
-    {"name": "P9", "distance": 0.9, "price": "1.00 €/Std."},
-    {"name": "P10", "distance": 1.6, "price": "2.00 €/Std."},
+    {"name": "P1", "distance": 0.3, "price": "1.50 €/Std.", "lat": 53.8680, "lon": 10.6860},
+    {"name": "P2", "distance": 0.7, "price": "2.00 €/Std.", "lat": 53.8692, "lon": 10.6895},
+    {"name": "P3", "distance": 1.1, "price": "1.00 €/Std.", "lat": 53.8655, "lon": 10.6830},
+    {"name": "P4", "distance": 1.4, "price": "1.50 €/Std.", "lat": 53.8710, "lon": 10.6815},
+    {"name": "P5", "distance": 1.8, "price": "2.50 €/Std.", "lat": 53.8640, "lon": 10.6910},
+    {"name": "P6", "distance": 2.1, "price": "1.00 €/Std.", "lat": 53.8725, "lon": 10.6875},
+    {"name": "P7", "distance": 2.5, "price": "2.00 €/Std.", "lat": 53.8630, "lon": 10.6790},
+    {"name": "P8", "distance": 0.5, "price": "1.50 €/Std.", "lat": 53.8668, "lon": 10.6880},
+    {"name": "P9", "distance": 0.9, "price": "1.00 €/Std.", "lat": 53.8702, "lon": 10.6845},
+    {"name": "P10", "distance": 1.6, "price": "2.00 €/Std.", "lat": 53.8620, "lon": 10.6850},
 ]
 
 def randomize_spot_statuses():
-    # Genau 5 mal "Frei" und 5 mal "Belegt"
+    # Ausgewogen: 5x Frei, 5x Belegt
     statuses = ["Frei"] * 5 + ["Belegt"] * 5
     random.shuffle(statuses)
     
@@ -109,7 +110,9 @@ def randomize_spot_statuses():
             "name": base["name"],
             "status": status,
             "distance": base["distance"],
-            "price": base["price"]
+            "price": base["price"],
+            "lat": base["lat"],
+            "lon": base["lon"]
         })
     return spot_data
 
@@ -117,11 +120,11 @@ if "spots" not in st.session_state:
     st.session_state.spots = randomize_spot_statuses()
 
 # ==========================================
-# SEITE 1: LOGIN (KENNZEICHEN)
+# LOGIN SEITE
 # ==========================================
 if not st.session_state.logged_in:
-    st.markdown("<h1 style='text-align: center; color: #0f4c81;'>🅿️ Where to Park</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #444;'>AI Parking Assist - Bitte Kennzeichen eingeben</p>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #0d6efd; font-size: 2.2rem;'>🅿️ Where to Park</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #6c757d;'>Mobile KI-Parkplatzsuche</p>", unsafe_allow_html=True)
     
     st.write("")
     
@@ -139,30 +142,50 @@ if not st.session_state.logged_in:
                 st.error("Bitte gib dein Kennzeichen ein.")
 
 # ==========================================
-# SEITE 2: HAUPT-APP (NACH LOGIN)
+# MAIN APP (NACH LOGIN)
 # ==========================================
 else:
-    col_title, col_user = st.columns([2.5, 1.5])
+    # Header-Zeile
+    col_title, col_user = st.columns([2.6, 1.4])
     with col_title:
         st.markdown(f"**🚗 Kennzeichen:** `{st.session_state.license_plate}`")
     with col_user:
-        if st.button("Abmelden", key="logout"):
+        if st.button("Logout", key="logout"):
             st.session_state.logged_in = False
             st.rerun()
 
-    tab_map, tab_ai, tab_info = st.tabs(["🗺️ Parkflächen", "📷 KI-Erkennung", "ℹ️ Info"])
+    tab_map, tab_list, tab_ai, tab_info = st.tabs(["🗺️ Karte", "📋 Übersicht", "📷 KI-Scan", "ℹ️ Info"])
 
-    # TAB 1: PARKFLÄCHEN (P1 - P10)
+    # TAB 1: INTERAKTIVE KARTE
     with tab_map:
-        st.subheader("Aktuelle Parkflächen (Live-Status)")
-        st.write("Entfernung und Preise sind fest, der Status ändert sich dynamisch.")
+        st.subheader("Live Parkplatz-Karte")
         
-        if st.button("🔄 Parkflächen aktualisieren"):
+        if st.button("🔄 Status aktualisieren (Ein-/Ausparken)"):
             st.session_state.spots = randomize_spot_statuses()
             st.rerun()
 
-        st.write("")
+        # Folium Karte auf Mittelpunkt ausrichten
+        m = folium.Map(location=[53.8675, 10.6855], zoom_start=14, tiles="OpenStreetMap")
 
+        # Pins auf der Karte platzieren
+        for spot in st.session_state.spots:
+            color = "green" if spot["status"] == "Frei" else "red"
+            popup_text = f"<b>{spot['name']}</b><br>Status: {spot['status']}<br>Tarif: {spot['price']}"
+            
+            folium.Marker(
+                location=[spot["lat"], spot["lon"]],
+                popup=popup_text,
+                tooltip=f"{spot['name']}: {spot['status']}",
+                icon=folium.Icon(color=color, icon="info-sign")
+            ).add_to(m)
+
+        # Karte in Streamlit rendern
+        st_folium(m, width=380, height=350)
+
+    # TAB 2: DETAIL-LISTE (P1 - P10)
+    with tab_list:
+        st.subheader("Alle Parkflächen")
+        
         for spot in st.session_state.spots:
             if spot["status"] == "Frei":
                 badge = '<span class="badge-free">FREI</span>'
@@ -172,17 +195,15 @@ else:
             st.markdown(f"""
             <div class="spot-card">
                 {badge}
-                <div class="spot-title">Parkfläche: {spot['name']}</div>
+                <div class="spot-title">Parkfläche {spot['name']}</div>
                 <div class="spot-info">Entfernung: {spot['distance']} km &nbsp;|&nbsp; Tarif: {spot['price']}</div>
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 2: LIVE-ERKENNUNG MIT YOLOV8
+    # TAB 3: LIVE KI-SCAN
     with tab_ai:
-        st.subheader("YOLOv8 Parkplatz-Scanner")
-        st.write("Lade ein Foto hoch, um Fahrzeuge auf einer Fläche zu prüfen:")
-        
-        uploaded_file = st.file_uploader("Bild auswählen", type=["jpg", "png", "jpeg"])
+        st.subheader("YOLOv8 Erkennung")
+        uploaded_file = st.file_uploader("Bild vom Parkplatz hochladen", type=["jpg", "png", "jpeg"])
 
         if uploaded_file is not None:
             image = Image.open(uploaded_file)
@@ -194,12 +215,12 @@ else:
                 annotated_frame = res.plot()
                 car_count = sum(1 for box in res.boxes if int(box.cls[0]) in [2, 3, 5, 7])
 
-            st.image(annotated_frame, caption="Erkannte Fahrzeuge", use_column_width=True)
-            st.success(f"**Ergebnis:** {car_count} Fahrzeuge auf dem Bild erkannt.")
+            st.image(annotated_frame, caption="YOLOv8 Live-Erkennung", use_column_width=True)
+            st.success(f"**Ergebnis:** {car_count} Fahrzeuge auf der Fläche erkannt.")
 
-    # TAB 3: INFO
+    # TAB 4: INFO
     with tab_info:
         st.subheader("System-Details")
-        st.write(f"**Aktives Kennzeichen:** {st.session_state.license_plate}")
-        st.write("**Modell:** YOLOv8 Nano")
-        st.write("**Modus:** Feste Entfernungen & Tarife mit dynamischem 50/50 Status-Mix")
+        st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
+        st.write("**KI-Modell:** YOLOv8 Nano (Ultralytics)")
+        st.write("**Feature:** Interaktive Live-Karte & ausgewogener 50/50 Zufalls-Status")

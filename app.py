@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom Styling (Farben, Abstände & Kontrast nach Bildvorlage)
+# Custom Styling (Farben, Abstände & Kontrast)
 st.markdown("""
     <style>
     .block-container {
@@ -100,7 +100,6 @@ BASE_SPOTS = [
 ]
 
 def randomize_spot_statuses():
-    # Ausgewogen: 5x Frei, 5x Belegt
     statuses = ["Frei"] * 5 + ["Belegt"] * 5
     random.shuffle(statuses)
     
@@ -145,7 +144,6 @@ if not st.session_state.logged_in:
 # MAIN APP (NACH LOGIN)
 # ==========================================
 else:
-    # Header-Zeile
     col_title, col_user = st.columns([2.6, 1.4])
     with col_title:
         st.markdown(f"**🚗 Kennzeichen:** `{st.session_state.license_plate}`")
@@ -164,10 +162,8 @@ else:
             st.session_state.spots = randomize_spot_statuses()
             st.rerun()
 
-        # Folium Karte auf Mittelpunkt ausrichten
         m = folium.Map(location=[53.8675, 10.6855], zoom_start=14, tiles="OpenStreetMap")
 
-        # Pins auf der Karte platzieren
         for spot in st.session_state.spots:
             color = "green" if spot["status"] == "Frei" else "red"
             popup_text = f"<b>{spot['name']}</b><br>Status: {spot['status']}<br>Tarif: {spot['price']}"
@@ -179,7 +175,6 @@ else:
                 icon=folium.Icon(color=color, icon="info-sign")
             ).add_to(m)
 
-        # Karte in Streamlit rendern
         st_folium(m, width=380, height=350)
 
     # TAB 2: DETAIL-LISTE (P1 - P10)
@@ -200,27 +195,36 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: LIVE KI-SCAN
+    # TAB 3: LIVE KI-SCAN (Vogelperspektive optimiert)
     with tab_ai:
-        st.subheader("YOLOv8 Erkennung")
-        uploaded_file = st.file_uploader("Bild vom Parkplatz hochladen", type=["jpg", "png", "jpeg"])
+        st.subheader("YOLOv8 Vogelperspektiven-Scanner")
+        st.write("Lade ein Foto von oben hoch, um die Verfügbarkeit zu prüfen:")
+        uploaded_file = st.file_uploader("Bild auswählen", type=["jpg", "png", "jpeg"])
 
         if uploaded_file is not None:
             image = Image.open(uploaded_file)
             img_array = np.array(image)
 
-            with st.spinner("Analysiere Bild mit YOLOv8..."):
-                results = model(img_array)
+            with st.spinner("Analysiere Parkplatz aus der Luft..."):
+                # Konfidenz auf 0.25 gesenkt, damit Autos von oben besser erkannt werden
+                results = model(img_array, conf=0.25)
                 res = results[0]
                 annotated_frame = res.plot()
+                
+                # Fahrzeuganzahl zählen (COCO IDs: 2=Car, 3=Motorcycle, 5=Bus, 7=Truck)
                 car_count = sum(1 for box in res.boxes if int(box.cls[0]) in [2, 3, 5, 7])
 
-            st.image(annotated_frame, caption="YOLOv8 Live-Erkennung", use_column_width=True)
-            st.success(f"**Ergebnis:** {car_count} Fahrzeuge auf der Fläche erkannt.")
+            st.image(annotated_frame, caption="YOLOv8 Erkennung (Vogelperspektive)", use_column_width=True)
+            
+            # Auswertung entsprechend deiner Kriterien (angenommenes 6er Raster)
+            if car_count >= 5:
+                st.error(f"🚫 **Kein Parkplatz verfügbar!** (Voll: {car_count} Fahrzeuge erkannt)")
+            else:
+                st.success(f"✅ **Parkplatz verfügbar!** (Frei: {car_count} Fahrzeuge erkannt)")
 
     # TAB 4: INFO
     with tab_info:
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** YOLOv8 Nano (Ultralytics)")
-        st.write("**Feature:** Interaktive Live-Karte & ausgewogener 50/50 Zufalls-Status")
+        st.write("**KI-Modell:** YOLOv8 Nano (mit angepasster Erkennung für Vogelperspektive)")
+        st.write("**Logik:** Automatische Prüfung (Voll vs. Frei bei wenigen/keinen Autos)")

@@ -195,36 +195,44 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: LIVE KI-SCAN (Vogelperspektive optimiert)
+    # TAB 3: LIVE KI-SCAN (Kombination aus YOLOv8 + Farb/Asphalt-Analyse)
     with tab_ai:
-        st.subheader("YOLOv8 Vogelperspektiven-Scanner")
-        st.write("Lade ein Foto von oben hoch, um die Verfügbarkeit zu prüfen:")
-        uploaded_file = st.file_uploader("Bild auswählen", type=["jpg", "png", "jpeg"])
+        st.subheader("Smart Luftbild-Scanner")
+        st.write("Erkennt Asphalt (grau = frei) vs. Fahrzeuge (Farben = belegt):")
+        uploaded_file = st.file_uploader("Luftbild hochladen", type=["jpg", "png", "jpeg"])
 
         if uploaded_file is not None:
             image = Image.open(uploaded_file)
             img_array = np.array(image)
 
-            with st.spinner("Analysiere Parkplatz aus der Luft..."):
-                # Konfidenz auf 0.25 gesenkt, damit Autos von oben besser erkannt werden
-                results = model(img_array, conf=0.25)
+            with st.spinner("Analysiere Farben und Flächen..."):
+                # 1. YOLOv8 Detektion versuchen
+                results = model(img_array, conf=0.2)
                 res = results[0]
                 annotated_frame = res.plot()
-                
-                # Fahrzeuganzahl zählen (COCO IDs: 2=Car, 3=Motorcycle, 5=Bus, 7=Truck)
                 car_count = sum(1 for box in res.boxes if int(box.cls[0]) in [2, 3, 5, 7])
 
-            st.image(annotated_frame, caption="YOLOv8 Erkennung (Vogelperspektive)", use_column_width=True)
+                # 2. Farb- & Grauwert-Analyse (Asphalt vs. bunte Autos) als intelligente Ergänzung
+                # Wir wandeln das Bild in den HSV-Farbraum um, um Farbanteile (Sättigung) zu messen
+                hsv = cv2.cvtColor(img_array, cv2.COLOR_RGB2HSV)
+                saturation = hsv[:, :, 1] # Sättigung (Grau = niedrig, Farbe = hoch)
+                avg_color_saturation = np.mean(saturation)
+
+                # Wenn YOLO kein Auto findet, aber die Farbsättigung im Bild hoch ist (z.B. rote/blaue Autos), 
+                # oder umgekehrt der Asphalt grau ist:
+                is_full_by_color = avg_color_saturation > 35  # Schwellenwert für bunte Fahrzeuge
+
+            st.image(annotated_frame, caption="Scan-Analyse", use_column_width=True)
             
-            # Auswertung entsprechend deiner Kriterien (angenommenes 6er Raster)
-            if car_count >= 5:
-                st.error(f"🚫 **Kein Parkplatz verfügbar!** (Voll: {car_count} Fahrzeuge erkannt)")
+            # Entscheidung basierend auf YOLO-Autos ODER Farb-Sättigung
+            if car_count > 0 or is_full_by_color:
+                st.error("🚫 **Kein Parkplatz verfügbar!** (Fahrzeug(e) erkannt)")
             else:
-                st.success(f"✅ **Parkplatz verfügbar!** (Frei: {car_count} Fahrzeuge erkannt)")
+                st.success("✅ **Parkplatz verfügbar!** (Fläche frei / Asphalt erkannt)")
 
     # TAB 4: INFO
     with tab_info:
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** YOLOv8 Nano (mit angepasster Erkennung für Vogelperspektive)")
-        st.write("**Logik:** Automatische Prüfung (Voll vs. Frei bei wenigen/keinen Autos)")
+        st.write("**KI-Modell:** YOLOv8 + Intelligente Farb- & Asphalt-Analyse")
+        st.write("**Modus:** Luftbildoptimiert (Grau = Frei, Farbe = Belegt)")

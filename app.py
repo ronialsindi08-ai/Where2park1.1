@@ -1,10 +1,11 @@
 import streamlit as st
+import random
 import cv2
 import numpy as np
 from PIL import Image
 from ultralytics import YOLO
 
-# 1. Seitenkonfiguration & Custom CSS für Mobile UI
+# 1. Seitenkonfiguration & Custom CSS für Mobile UI mit starkem Kontrast
 st.set_page_config(
     page_title="Where to Park",
     page_icon="🅿️",
@@ -12,66 +13,99 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom Styling für App-Feeling
 st.markdown("""
     <style>
-    /* Maximale Breite auf Smartphone-Größe begrenzen */
     .block-container {
         max-width: 450px;
         padding-top: 1.5rem;
         padding-bottom: 3rem;
     }
-    /* Primäre Buttons styling */
     .stButton>button {
         width: 100%;
-        background-color: #1E88E5;
+        background-color: #0f4c81;
         color: white;
         border-radius: 10px;
         height: 3em;
         font-weight: bold;
     }
-    /* Card Design für Status */
-    .metric-card {
-        background-color: #f8f9fa;
-        border-radius: 12px;
-        padding: 15px;
+    /* Kontrastreiche Badges für Status */
+    .badge-free {
+        background-color: #198754;
+        color: white;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-weight: bold;
+    }
+    .badge-busy {
+        background-color: #dc3545;
+        color: white;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-weight: bold;
+    }
+    .spot-card {
+        background-color: #ffffff;
+        border: 1px solid #ced4da;
+        border-radius: 10px;
+        padding: 12px 15px;
         margin-bottom: 10px;
-        border: 1px solid #e9ecef;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
     </style>
 """, unsafe_allow_html=True)
 
-# Modell laden (gecached, damit es schnell bleibt)
+# Modell laden (gecached)
 @st.cache_resource
 def load_yolo_model():
-    # Lädt das vortrainierte YOLOv8 Nano-Modell (leicht & schnell)
     return YOLO("yolov8n.pt")
 
 model = load_yolo_model()
 
-# Session State für Login-Status initialisieren
+# Session State für Login und Parkflächen initialisieren
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "license_plate" not in st.session_state:
     st.session_state.license_plate = ""
 
+# Funktion, die 10 Parkflächen (P1 bis P10) mit genau 50% frei / 50% belegt generiert
+def get_random_parking_spots():
+    spots = [f"P{i}" for i in range(1, 11)]
+    # 5 mal Frei ("Frei"), 5 mal Belegt ("Belegt")
+    statuses = ["Frei"] * 5 + ["Belegt"] * 5
+    random.shuffle(statuses)
+    
+    spot_data = []
+    for spot, status in zip(spots, statuses):
+        spot_data.append({
+            "name": spot,
+            "status": status,
+            "distance": round(random.uniform(0.2, 2.5), 1),
+            "price": f"{random.choice([1.00, 1.50, 2.00]):.2f} €/Std."
+        })
+    return spot_data
+
+# Wenn man sich frisch einloggt oder aktualisiert, neue Zufallswerte erzeugen
+if "spots" not in st.session_state:
+    st.session_state.spots = get_random_parking_spots()
+
 # ==========================================
 # SEITE 1: LOGIN (NUR KENNZEICHEN)
 # ==========================================
 if not st.session_state.logged_in:
-    st.markdown("<h2 style='text-align: center;'>🅿️ Where to Park</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: gray;'>Finde freie Parkplätze in deiner Nähe</p>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #0f4c81;'>🅿️ Where to Park</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #555;'>Gib dein Kennzeichen ein, um die Live-Übersicht zu starten</p>", unsafe_allow_html=True)
     
-    st.space = st.write("")
+    st.write("")
     
     with st.form("login_form"):
         license_input = st.text_input("Kfz-Kennzeichen eingeben", placeholder="z.B. HH-AB 1234")
-        submit = st.form_submit_button("Anmelden / Einloggen")
+        submit = st.form_submit_button("Einloggen")
         
         if submit:
             if license_input.strip() != "":
                 st.session_state.logged_in = True
                 st.session_state.license_plate = license_input.upper()
+                st.session_state.spots = get_random_parking_spots() # Frische Daten beim Login
                 st.rerun()
             else:
                 st.error("Bitte gib dein Kennzeichen ein.")
@@ -80,73 +114,66 @@ if not st.session_state.logged_in:
 # SEITE 2: HAUPT-APP (NACH LOGIN)
 # ==========================================
 else:
-    # Top-Bar & Logout
     col_title, col_user = st.columns([3, 1])
     with col_title:
-        st.markdown(f"**🚗 {st.session_state.license_plate}**")
+        st.markdown(f"**🚗 Kennzeichen:** `{st.session_state.license_plate}`")
     with col_user:
-        if st.button("Abmelden", key="logout"):
+        if st.button("Logout", key="logout"):
             st.session_state.logged_in = False
             st.rerun()
 
-    # Untere/Obere Tab-Navigation (Map, Live-KI-Scan, Einstellungen)
-    tab_map, tab_ai, tab_info = st.tabs(["🗺️ Karte", "📷 KI-Erkennung", "ℹ️ Info"])
+    tab_map, tab_ai, tab_info = st.tabs(["🗺️ Parkflächen", "📷 KI-Erkennung", "ℹ️ Info"])
 
-    # TAB 1: KARTE & STATUS
+    # TAB 1: PARKFLÄCHEN (P1 - P10) MIT AUSGEWOGENEM ZUFALLS-STATUS
     with tab_map:
-        st.subheader("Freie Parkplätze in der Nähe")
-        st.text_input("📍 Standort suchen...", value="Hamburg Mitte")
+        st.subheader("Aktuelle Parkflächen (Live-Status)")
+        st.write("Der Status ändert sich dynamisch (jemand fährt ein/aus).")
         
-        # Simulierter Parkplatz-Status
-        st.markdown("""
-        <div class="metric-card">
-            <h4>🅿️ Parkhaus Holstentor</h4>
-            <p><b>Status:</b> <span style="color:green;">Frei (ca. 18 Plätze)</span><br>
-            <b>Entfernung:</b> 0.8 km | <b>Gebühren:</b> 1,50 €/Std.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        st.button("Navigation starten 📍", key="nav1")
+        if st.button("🔄 Parkflächen aktualisieren (Neuer Zufall)"):
+            st.session_state.spots = get_random_parking_spots()
+            st.rerun()
 
-        st.markdown("""
-        <div class="metric-card">
-            <h4>🅿️ Parkplatz Hauptstraße</h4>
-            <p><b>Status:</b> <span style="color:red;">Belegt (0 Plätze)</span><br>
-            <b>Entfernung:</b> 1.2 km | <b>Gebühren:</b> Kostenlos</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.write("")
+
+        # Alle 10 Parkflächen übersichtlich als Cards anzeigen
+        for spot in st.session_state.spots:
+            if spot["status"] == "Frei":
+                badge = '<span class="badge-free">FREI</span>'
+                action_btn = f"Hinfahren ({spot['name']})"
+            else:
+                badge = '<span class="badge-busy">BELEGT</span>'
+                action_btn = f"Besetzt"
+
+            st.markdown(f"""
+            <div class="spot-card">
+                <b>Parkfläche: {spot['name']}</b> &nbsp;&nbsp; {badge}<br>
+                <small style="color: #444;">Entfernung: {spot['distance']} km | Tarif: {spot['price']}</small>
+            </div>
+            """, unsafe_allow_html=True)
 
     # TAB 2: LIVE-ERKENNUNG MIT YOLOV8
     with tab_ai:
-        st.subheader("YOLOv8 Parkplatz-Analyse")
-        st.write("Lade ein Bild hoch, um Autos und freie Stellflächen zu erkennen:")
+        st.subheader("YOLOv8 Parkplatz-Scanner")
+        st.write("Lade ein Foto hoch, um Fahrzeuge auf einer Fläche zu prüfen:")
         
         uploaded_file = st.file_uploader("Bild auswählen", type=["jpg", "png", "jpeg"])
 
         if uploaded_file is not None:
-            # Bild laden
             image = Image.open(uploaded_file)
             img_array = np.array(image)
 
-            with st.spinner("YOLOv8 analysiert das Bild..."):
-                # YOLOv8 Inferenz ausführen
+            with st.spinner("Analysiere Bild mit YOLOv8..."):
                 results = model(img_array)
                 res = results[0]
-
-                # Bounding Boxes rendern
                 annotated_frame = res.plot()
-                
-                # Zählen, wie viele Autos (Class ID 2 in COCO Dataset) erkannt wurden
-                car_count = sum(1 for box in res.boxes if int(box.cls[0]) in [2, 3, 5, 7]) # Auto, Lkw, Bus
+                car_count = sum(1 for box in res.boxes if int(box.cls[0]) in [2, 3, 5, 7])
 
-            # Bild mit Detections anzeigen
-            st.image(annotated_frame, caption="YOLOv8 Live-Analyse", use_column_width=True)
-            
-            # Auswertung anzeigen
-            st.success(f"**Ergebnis:** {car_count} Fahrzeuge auf dem Bild erkannt!")
+            st.image(annotated_frame, caption="Erkannte Fahrzeuge", use_column_width=True)
+            st.success(f"**Ergebnis:** {car_count} Fahrzeuge auf dem Bild erkannt.")
 
-    # TAB 3: PROFIL & MODELL-INFO
+    # TAB 3: INFO
     with tab_info:
-        st.subheader("System-Informationen")
-        st.write(f"**Angemeldetes Kennzeichen:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** YOLOv8 Nano (Ultralytics)")
-        st.write("**Framework:** Streamlit / Python")
+        st.subheader("System-Details")
+        st.write(f"**Aktives Kennzeichen:** {st.session_state.license_plate}")
+        st.write("**Modell:** YOLOv8 Nano")
+        st.write("**Modus:** Ausgewogener Zufalls-Status (50% Frei / 50% Belegt bei 10 Flächen)")

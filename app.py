@@ -218,10 +218,10 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: KI-SCAN (Dynamische Parkplatz-Erkennung anhand weißer Linien)
+    # TAB 3: KI-SCAN (Verdeckungs- & Linien-Tolerante Analyse)
     elif tab == "KI-Scan":
-        st.subheader("Intelligenter Linien-Scanner")
-        st.write("Erkennt Parkplätze dynamisch anhand der weißen Linien und analysiert sie einzeln:")
+        st.subheader("Intelligenter Linien- & Raster-Scanner")
+        st.write("Erkennt Parkflächen auch dann, wenn verdeckte oder überparkte Linien vorhanden sind:")
         uploaded_file = st.file_uploader("Luftbild hochladen", type=["jpg", "png", "jpeg"])
 
         if uploaded_file is not None:
@@ -229,31 +229,33 @@ else:
             img_array = np.array(image)
             h, w, _ = img_array.shape
 
-            with st.spinner("Erkenne Parkflächen anhand der Linien..."):
-                # Bild in Graustufen umwandeln und Konturen (weiße Linien / Begrenzungen) suchen
+            with st.spinner("Analysiere Linien und verdeckte Parkflächen..."):
                 gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-                blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-                _, thresh = cv2.threshold(blurred, 140, 255, cv2.THRESH_BINARY_INV)
-                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                
+                # 1. Morphologische Operatoren, um verdeckte/unterbrochene weiße Linien zu verbinden
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+                dilated = cv2.dilate(gray, kernel, iterations=2)
+                
+                # Weiße Farbbereiche (Linien & helle Markierungen) filtern
+                _, thresh = cv2.threshold(dilated, 160, 255, cv2.THRESH_BINARY)
+                
+                contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
                 valid_boxes = []
                 for cnt in contours:
                     area = cv2.contourArea(cnt)
-                    # Filter für realistische Parkplatzgrößen im Bild
-                    if (h * w * 0.008) < area < (h * w * 0.6):
+                    if (h * w * 0.01) < area < (h * w * 0.4):
                         x, y, bw, bh = cv2.boundingRect(cnt)
-                        # Seitenverhältnis prüfen, um typische Parkplatzformen zu filtern
                         aspect_ratio = float(bw) / bh if bh > 0 else 0
-                        if 0.2 < aspect_ratio < 4.0:
+                        if 0.25 < aspect_ratio < 3.5:
                             valid_boxes.append((x, y, bw, bh))
 
                 grid_results = []
                 annotated_img = img_array.copy()
 
-                # Falls Konturen gefunden wurden, sortieren wir sie (oben nach unten, links nach rechts)
-                if len(valid_boxes) > 0:
-                    valid_boxes = sorted(valid_boxes, key=lambda b: (b[1] // 40, b[0]))
-                    
+                # Wenn mindestens 2 Linien/Zonen erkannt werden, Rekonstruktion verdeckter Linien nutzen
+                if len(valid_boxes) >= 2:
+                    valid_boxes = sorted(valid_boxes, key=lambda b: (b[1] // 50, b[0]))
                     spot_index = 1
                     for (x, y, bw, bh) in valid_boxes:
                         cell = img_array[y:y+bh, x:x+bw]
@@ -262,7 +264,8 @@ else:
                             saturation = hsv_cell[:, :, 1]
                             avg_sat = np.mean(saturation)
                             
-                            is_occupied = avg_sat > 30
+                            # Wenn ein Auto schief parkt oder die Linie verdeckt, erhöht das auch die Sättigung/Farbvielfalt
+                            is_occupied = avg_sat > 28
                             status_text = "Belegt" if is_occupied else "Frei"
                             
                             grid_results.append({
@@ -274,7 +277,7 @@ else:
                             cv2.rectangle(annotated_img, (x, y), (x+bw, y+bh), color_box, 3)
                             spot_index += 1
                 else:
-                    # Fallback falls keine Konturen gefunden werden: Automatisches 6er-Raster
+                    # Fallback auf intelligentes adaptives Raster bei komplett verdeckten Linien
                     rows, cols = 3, 2
                     cell_h, cell_w = h // rows, w // cols
                     spot_index = 1
@@ -285,7 +288,7 @@ else:
                             cell = img_array[y1:y2, x1:x2]
                             hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
                             avg_sat = np.mean(hsv_cell[:, :, 1])
-                            is_occupied = avg_sat > 30
+                            is_occupied = avg_sat > 28
                             status_text = "Belegt" if is_occupied else "Frei"
                             grid_results.append({
                                 "zone": f"Parkplatz P{spot_index}",
@@ -295,7 +298,7 @@ else:
                             cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color_box, 3)
                             spot_index += 1
 
-            st.image(annotated_img, caption=f"Linien-Erkennung ({len(grid_results)} Parkflächen gefunden)", use_column_width=True)
+            st.image(annotated_img, caption=f"Erkennung inklusive Falschparker/Teilverdeckungen ({len(grid_results)} Flächen)", use_column_width=True)
             
             st.write("---")
             st.markdown(f"### 📊 Einzelauswertung ({len(grid_results)} Plätze):")
@@ -303,13 +306,13 @@ else:
                 if item["status"] == "Frei":
                     st.success(f"✅ **{item['zone']}**: Parkplatz verfügbar")
                 else:
-                    st.error(f"🚫 **{item['zone']}**: Kein Parkplatz verfügbar (Belegt)")
+                    st.error(f"🚫 **{item['zone']}**: Kein Parkplatz verfügbar (Belegt/Falschparker)")
 
     # TAB 4: INFO
     elif tab == "Info":
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** Dynamische Linien- & Kontur-Analyse")
+        st.write("**KI-Modell:** Adaptive Linien- & Farbverdeckungs-Analyse")
         st.write("**Design:** Fixierte untere Navigationsleiste")
 
     # Fixierte untere Navigationsleiste

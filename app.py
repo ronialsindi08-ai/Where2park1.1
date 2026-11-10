@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom Styling für modernes Design, Vollbild-Karte und untere Navigation
+# Custom Styling für echtes App-Gefühl, fixierte untere Leiste & saubere Abstände
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -23,10 +23,11 @@ st.markdown("""
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
     }
+    /* Oberen und unteren Abstand so anpassen, dass nichts abgeschnitten wird */
     .block-container {
         max-width: 450px;
-        padding-top: 1.5rem;
-        padding-bottom: 5rem; /* Platz für die untere Leiste lassen */
+        padding-top: 2rem;
+        padding-bottom: 6rem; /* Platz lassen für die fixierte untere Leiste */
     }
     .stButton>button {
         width: 100%;
@@ -74,20 +75,17 @@ st.markdown("""
         color: #495057;
         margin-top: 4px;
     }
-    /* Untere App-Navigation simulieren */
-    .bottom-nav {
+    /* FIXIERTE UNTERE NAVIGATIONSLEISTE (Immer am Bildschirmrand) */
+    .fixed-bottom-nav {
         position: fixed;
         bottom: 0;
-        left: 50%;
-        transform: translateX(-50%);
+        left: 0;
         width: 100%;
-        max-width: 450px;
         background-color: #ffffff;
         border-top: 1px solid #dee2e6;
-        padding: 10px 0;
-        display: flex;
-        justify-content: space-around;
-        z-index: 999;
+        padding: 8px 0;
+        z-index: 99999;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
     }
     </style>
 """, unsafe_allow_html=True)
@@ -141,14 +139,16 @@ if "spots" not in st.session_state:
     st.session_state.spots = randomize_spot_statuses()
 
 # ==========================================
-# LOGIN SEITE (Mit App-Logo & Kennzeichen-Pflicht)
+# LOGIN SEITE (Mit Logo & Kennzeichen-Pflicht)
 # ==========================================
 if not st.session_state.logged_in:
-    # Logo zentriert anzeigen (Falls die Datei lokal im Repo liegt, wird sie geladen, sonst Platzhalter)
-    try:
-        st.image("Glänzende Parkplatz-Erkennung mit Check-Symbol.png", width=120)
-    except:
-        st.markdown("<h1 style='text-align: center; color: #0b5ed7;'>🅿️</h1>", unsafe_allow_html=True)
+    # Logo zentriert anzeigen
+    col_logo1, col_logo2, col_logo3 = st.columns([1, 2, 1])
+    with col_logo2:
+        try:
+            st.image("Glänzende Parkplatz-Erkennung mit Check-Symbol.png", use_column_width=True)
+        except:
+            st.markdown("<h1 style='text-align: center; color: #0b5ed7;'>🅿️</h1>", unsafe_allow_html=True)
 
     st.markdown("<h1 style='text-align: center; color: #0b5ed7; font-size: 2rem;'>Where to Park</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #6c757d;'>AI PARKING ASSIST</p>", unsafe_allow_html=True)
@@ -186,7 +186,6 @@ else:
 
     st.write("---")
 
-    # Navigation über Session State steuern (für die untere Leiste)
     tab = st.session_state.active_tab
 
     # TAB 1: KARTE (Vollbild)
@@ -197,7 +196,6 @@ else:
             st.session_state.spots = randomize_spot_statuses()
             st.rerun()
 
-        # Vollbild-Karte für Mobile
         m = folium.Map(location=[53.8675, 10.6855], zoom_start=14, tiles="OpenStreetMap")
 
         for spot in st.session_state.spots:
@@ -211,7 +209,7 @@ else:
                 icon=folium.Icon(color=color, icon="info-sign")
             ).add_to(m)
 
-        st_folium(m, width=390, height=480)
+        st_folium(m, width=390, height=450)
 
     # TAB 2: ÜBERSICHT (LISTE)
     elif tab == "Übersicht":
@@ -290,24 +288,30 @@ else:
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
         st.write("**KI-Modell:** 6-Zonen Raster-Farb-Analyse")
-        st.write("**Design:** Mobile App mit unterer Navigationsleiste")
+        st.write("**Design:** Fixierte untere Navigationsleiste")
 
-    # Echte untere Menüleiste für den Handy-Look
-    st.write("")
+    # Fixierte untere Navigationsleiste per HTML/CSS Container injiziert
+    st.markdown("""
+        <div class="fixed-bottom-nav">
+            <div style="display: flex; justify-content: space-around; max-width: 450px; margin: 0 auto;">
+    """, unsafe_allow_html=True)
+
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        if st.button("🗺️ Karte"):
+        if st.button("🗺️ Karte", key="nav_karte"):
             st.session_state.active_tab = "Karte"
             st.rerun()
     with c2:
-        if st.button("📋 Liste"):
+        if st.button("📋 Liste", key="nav_liste"):
             st.session_state.active_tab = "Übersicht"
             st.rerun()
     with c3:
-        if st.button("📷 Scan"):
+        if st.button("📷 Scan", key="nav_scan"):
             st.session_state.active_tab = "KI-Scan"
             st.rerun()
     with c4:
-        if st.button("ℹ️ Info"):
+        if st.button("ℹ️ Info", key="nav_info"):
             st.session_state.active_tab = "Info"
             st.rerun()
+
+    st.markdown("</div></div>", unsafe_allow_html=True)

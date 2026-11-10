@@ -15,9 +15,14 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom Styling (Farben, Abstände & Kontrast)
+# Custom Styling mit moderner Schriftart (Inter) und starkem Kontrast
 st.markdown("""
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
     .block-container {
         max-width: 450px;
         padding-top: 2.5rem;
@@ -29,7 +34,7 @@ st.markdown("""
         color: white;
         border-radius: 8px;
         height: 2.8em;
-        font-weight: bold;
+        font-weight: 600;
         border: none;
     }
     .badge-free {
@@ -37,7 +42,7 @@ st.markdown("""
         color: white;
         padding: 4px 10px;
         border-radius: 6px;
-        font-weight: bold;
+        font-weight: 600;
         font-size: 0.85rem;
         float: right;
     }
@@ -46,7 +51,7 @@ st.markdown("""
         color: white;
         padding: 4px 10px;
         border-radius: 6px;
-        font-weight: bold;
+        font-weight: 600;
         font-size: 0.85rem;
         float: right;
     }
@@ -61,7 +66,7 @@ st.markdown("""
     }
     .spot-title {
         font-size: 1.1rem;
-        font-weight: bold;
+        font-weight: 700;
         color: #0b5ed7;
     }
     .spot-info {
@@ -195,44 +200,68 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: LIVE KI-SCAN (Kombination aus YOLOv8 + Farb/Asphalt-Analyse)
+    # TAB 3: LIVE KI-SCAN (Unterteilung in 6 Raster-Bereiche mit Farb-Analyse)
     with tab_ai:
-        st.subheader("Smart Luftbild-Scanner")
-        st.write("Erkennt Asphalt (grau = frei) vs. Fahrzeuge (Farben = belegt):")
+        st.subheader("6-Zonen Parkplatz-Scanner")
+        st.write("Analysiert das Luftbild aufgeteilt in 6 Einzelparkplätze (Asphalt vs. Fahrzeugfarbe):")
         uploaded_file = st.file_uploader("Luftbild hochladen", type=["jpg", "png", "jpeg"])
 
         if uploaded_file is not None:
-            image = Image.open(uploaded_file)
+            image = Image.open(uploaded_file).convert("RGB")
             img_array = np.array(image)
+            h, w, _ = img_array.shape
 
-            with st.spinner("Analysiere Farben und Flächen..."):
-                # 1. YOLOv8 Detektion versuchen
-                results = model(img_array, conf=0.2)
-                res = results[0]
-                annotated_frame = res.plot()
-                car_count = sum(1 for box in res.boxes if int(box.cls[0]) in [2, 3, 5, 7])
+            with st.spinner("Teile Bild in 6 Parkzonen auf..."):
+                # Raster: 3 Zeilen, 2 Spalten = 6 Parkplätze
+                rows, cols = 3, 2
+                cell_h = h // rows
+                cell_w = w // cols
+                
+                grid_results = []
+                annotated_img = img_array.copy()
 
-                # 2. Farb- & Grauwert-Analyse (Asphalt vs. bunte Autos) als intelligente Ergänzung
-                # Wir wandeln das Bild in den HSV-Farbraum um, um Farbanteile (Sättigung) zu messen
-                hsv = cv2.cvtColor(img_array, cv2.COLOR_RGB2HSV)
-                saturation = hsv[:, :, 1] # Sättigung (Grau = niedrig, Farbe = hoch)
-                avg_color_saturation = np.mean(saturation)
+                spot_index = 1
+                for r in range(rows):
+                    for c in range(cols):
+                        # Ausschnitt für den jeweiligen Parkplatz berechnen
+                        y1, y2 = r * cell_h, (r + 1) * cell_h
+                        x1, x2 = c * cell_w, (c + 1) * cell_w
+                        
+                        cell = img_array[y1:y2, x1:x2]
+                        
+                        # Farb-Analyse (Sättigung im HSV-Farbraum: Grau = niedrig, Farbe/Auto = hoch)
+                        hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
+                        saturation = hsv_cell[:, :, 1]
+                        avg_sat = np.mean(saturation)
+                        
+                        # Schwellenwert: Wenn Sättigung niedrig ist -> Asphalt (Frei), sonst Fahrzeug (Belegt)
+                        is_occupied = avg_sat > 30
+                        status_text = "Belegt" if is_occupied else "Frei"
+                        
+                        grid_results.append({
+                            "zone": f"Parkplatz Zone {spot_index}",
+                            "status": status_text
+                        })
+                        
+                        # Rechteck ins Bild einzeichnen (Grün für frei, Rot für belegt)
+                        color_box = (0, 200, 0) if not is_occupied else (200, 0, 0)
+                        cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color_box, 4)
+                        
+                        spot_index += 1
 
-                # Wenn YOLO kein Auto findet, aber die Farbsättigung im Bild hoch ist (z.B. rote/blaue Autos), 
-                # oder umgekehrt der Asphalt grau ist:
-                is_full_by_color = avg_color_saturation > 35  # Schwellenwert für bunte Fahrzeuge
-
-            st.image(annotated_frame, caption="Scan-Analyse", use_column_width=True)
+            st.image(annotated_img, caption="6-Zonen Analyse (Grün = Frei, Rot = Belegt)", use_column_width=True)
             
-            # Entscheidung basierend auf YOLO-Autos ODER Farb-Sättigung
-            if car_count > 0 or is_full_by_color:
-                st.error("🚫 **Kein Parkplatz verfügbar!** (Fahrzeug(e) erkannt)")
-            else:
-                st.success("✅ **Parkplatz verfügbar!** (Fläche frei / Asphalt erkannt)")
+            st.write("---")
+            st.markdown("### 📊 Einzelauswertung der 6 Zonen:")
+            for item in grid_results:
+                if item["status"] == "Frei":
+                    st.success(f"✅ **{item['zone']}**: Parkplatz verfügbar")
+                else:
+                    st.error(f"🚫 **{item['zone']}**: Kein Parkplatz verfügbar (Belegt)")
 
     # TAB 4: INFO
     with tab_info:
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** YOLOv8 + Intelligente Farb- & Asphalt-Analyse")
-        st.write("**Modus:** Luftbildoptimiert (Grau = Frei, Farbe = Belegt)")
+        st.write("**KI-Modell:** 6-Zonen Raster-Farb-Analyse")
+        st.write("**Design:** Modernes UI mit Inter-Schriftart")

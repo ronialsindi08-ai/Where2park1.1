@@ -23,11 +23,10 @@ st.markdown("""
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
     }
-    /* Oberen und unteren Abstand so anpassen, dass nichts abgeschnitten wird */
     .block-container {
         max-width: 450px;
         padding-top: 2rem;
-        padding-bottom: 6rem; /* Platz lassen für die fixierte untere Leiste */
+        padding-bottom: 6rem;
     }
     .stButton>button {
         width: 100%;
@@ -75,7 +74,6 @@ st.markdown("""
         color: #495057;
         margin-top: 4px;
     }
-    /* FIXIERTE UNTERE NAVIGATIONSLEISTE (Immer am Bildschirmrand) */
     .fixed-bottom-nav {
         position: fixed;
         bottom: 0;
@@ -139,18 +137,10 @@ if "spots" not in st.session_state:
     st.session_state.spots = randomize_spot_statuses()
 
 # ==========================================
-# LOGIN SEITE (Mit Logo & Kennzeichen-Pflicht)
+# LOGIN SEITE
 # ==========================================
 if not st.session_state.logged_in:
-    # Logo zentriert anzeigen
-    col_logo1, col_logo2, col_logo3 = st.columns([1, 2, 1])
-    with col_logo2:
-        try:
-            st.image("Glänzende Parkplatz-Erkennung mit Check-Symbol.png", use_column_width=True)
-        except:
-            st.markdown("<h1 style='text-align: center; color: #0b5ed7;'>🅿️</h1>", unsafe_allow_html=True)
-
-    st.markdown("<h1 style='text-align: center; color: #0b5ed7; font-size: 2rem;'>Where to Park</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #0b5ed7; font-size: 2.2rem;'>🅿️ Where to Park</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #6c757d;'>AI PARKING ASSIST</p>", unsafe_allow_html=True)
     
     st.write("")
@@ -175,7 +165,6 @@ if not st.session_state.logged_in:
 # MAIN APP (NACH LOGIN)
 # ==========================================
 else:
-    # Header-Zeile mit Kennzeichen und Logout
     col_title, col_user = st.columns([2.6, 1.4])
     with col_title:
         st.markdown(f"**🚗 Kennzeichen:** `{st.session_state.license_plate}`")
@@ -229,10 +218,10 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: KI-SCAN (6-Zonen Raster)
+    # TAB 3: KI-SCAN (Dynamische Parkplatz-Erkennung anhand weißer Linien)
     elif tab == "KI-Scan":
-        st.subheader("6-Zonen Parkplatz-Scanner")
-        st.write("Analysiert das Luftbild aufgeteilt in 6 Einzelparkplätze (Asphalt vs. Fahrzeugfarbe):")
+        st.subheader("Intelligenter Linien-Scanner")
+        st.write("Erkennt Parkplätze dynamisch anhand der weißen Linien und analysiert sie einzeln:")
         uploaded_file = st.file_uploader("Luftbild hochladen", type=["jpg", "png", "jpeg"])
 
         if uploaded_file is not None:
@@ -240,43 +229,76 @@ else:
             img_array = np.array(image)
             h, w, _ = img_array.shape
 
-            with st.spinner("Teile Bild in 6 Parkzonen auf..."):
-                rows, cols = 3, 2
-                cell_h = h // rows
-                cell_w = w // cols
-                
+            with st.spinner("Erkenne Parkflächen anhand der Linien..."):
+                # Bild in Graustufen umwandeln und Konturen (weiße Linien / Begrenzungen) suchen
+                gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+                blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+                _, thresh = cv2.threshold(blurred, 140, 255, cv2.THRESH_BINARY_INV)
+                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+                valid_boxes = []
+                for cnt in contours:
+                    area = cv2.contourArea(cnt)
+                    # Filter für realistische Parkplatzgrößen im Bild
+                    if (h * w * 0.008) < area < (h * w * 0.6):
+                        x, y, bw, bh = cv2.boundingRect(cnt)
+                        # Seitenverhältnis prüfen, um typische Parkplatzformen zu filtern
+                        aspect_ratio = float(bw) / bh if bh > 0 else 0
+                        if 0.2 < aspect_ratio < 4.0:
+                            valid_boxes.append((x, y, bw, bh))
+
                 grid_results = []
                 annotated_img = img_array.copy()
 
-                spot_index = 1
-                for r in range(rows):
-                    for c in range(cols):
-                        y1, y2 = r * cell_h, (r + 1) * cell_h
-                        x1, x2 = c * cell_w, (c + 1) * cell_w
-                        
-                        cell = img_array[y1:y2, x1:x2]
-                        
-                        hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
-                        saturation = hsv_cell[:, :, 1]
-                        avg_sat = np.mean(saturation)
-                        
-                        is_occupied = avg_sat > 30
-                        status_text = "Belegt" if is_occupied else "Frei"
-                        
-                        grid_results.append({
-                            "zone": f"Parkplatz Zone {spot_index}",
-                            "status": status_text
-                        })
-                        
-                        color_box = (0, 200, 0) if not is_occupied else (200, 0, 0)
-                        cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color_box, 4)
-                        
-                        spot_index += 1
+                # Falls Konturen gefunden wurden, sortieren wir sie (oben nach unten, links nach rechts)
+                if len(valid_boxes) > 0:
+                    valid_boxes = sorted(valid_boxes, key=lambda b: (b[1] // 40, b[0]))
+                    
+                    spot_index = 1
+                    for (x, y, bw, bh) in valid_boxes:
+                        cell = img_array[y:y+bh, x:x+bw]
+                        if cell.size > 0:
+                            hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
+                            saturation = hsv_cell[:, :, 1]
+                            avg_sat = np.mean(saturation)
+                            
+                            is_occupied = avg_sat > 30
+                            status_text = "Belegt" if is_occupied else "Frei"
+                            
+                            grid_results.append({
+                                "zone": f"Parkplatz P{spot_index}",
+                                "status": status_text
+                            })
+                            
+                            color_box = (0, 200, 0) if not is_occupied else (200, 0, 0)
+                            cv2.rectangle(annotated_img, (x, y), (x+bw, y+bh), color_box, 3)
+                            spot_index += 1
+                else:
+                    # Fallback falls keine Konturen gefunden werden: Automatisches 6er-Raster
+                    rows, cols = 3, 2
+                    cell_h, cell_w = h // rows, w // cols
+                    spot_index = 1
+                    for r in range(rows):
+                        for c in range(cols):
+                            y1, y2 = r * cell_h, (r + 1) * cell_h
+                            x1, x2 = c * cell_w, (c + 1) * cell_w
+                            cell = img_array[y1:y2, x1:x2]
+                            hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
+                            avg_sat = np.mean(hsv_cell[:, :, 1])
+                            is_occupied = avg_sat > 30
+                            status_text = "Belegt" if is_occupied else "Frei"
+                            grid_results.append({
+                                "zone": f"Parkplatz P{spot_index}",
+                                "status": status_text
+                            })
+                            color_box = (0, 200, 0) if not is_occupied else (200, 0, 0)
+                            cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color_box, 3)
+                            spot_index += 1
 
-            st.image(annotated_img, caption="6-Zonen Analyse (Grün = Frei, Rot = Belegt)", use_column_width=True)
+            st.image(annotated_img, caption=f"Linien-Erkennung ({len(grid_results)} Parkflächen gefunden)", use_column_width=True)
             
             st.write("---")
-            st.markdown("### 📊 Einzelauswertung der 6 Zonen:")
+            st.markdown(f"### 📊 Einzelauswertung ({len(grid_results)} Plätze):")
             for item in grid_results:
                 if item["status"] == "Frei":
                     st.success(f"✅ **{item['zone']}**: Parkplatz verfügbar")
@@ -287,10 +309,10 @@ else:
     elif tab == "Info":
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** 6-Zonen Raster-Farb-Analyse")
+        st.write("**KI-Modell:** Dynamische Linien- & Kontur-Analyse")
         st.write("**Design:** Fixierte untere Navigationsleiste")
 
-    # Fixierte untere Navigationsleiste per HTML/CSS Container injiziert
+    # Fixierte untere Navigationsleiste
     st.markdown("""
         <div class="fixed-bottom-nav">
             <div style="display: flex; justify-content: space-around; max-width: 450px; margin: 0 auto;">

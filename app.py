@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom Styling mit moderner Schriftart (Inter) und starkem Kontrast
+# Custom Styling für modernes Design, Vollbild-Karte und untere Navigation
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -25,15 +25,15 @@ st.markdown("""
     }
     .block-container {
         max-width: 450px;
-        padding-top: 2.5rem;
-        padding-bottom: 3rem;
+        padding-top: 1.5rem;
+        padding-bottom: 5rem; /* Platz für die untere Leiste lassen */
     }
     .stButton>button {
         width: 100%;
-        background-color: #0d6efd;
+        background-color: #0b5ed7;
         color: white;
-        border-radius: 8px;
-        height: 2.8em;
+        border-radius: 10px;
+        height: 3em;
         font-weight: 600;
         border: none;
     }
@@ -74,6 +74,21 @@ st.markdown("""
         color: #495057;
         margin-top: 4px;
     }
+    /* Untere App-Navigation simulieren */
+    .bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 100%;
+        max-width: 450px;
+        background-color: #ffffff;
+        border-top: 1px solid #dee2e6;
+        padding: 10px 0;
+        display: flex;
+        justify-content: space-around;
+        z-index: 999;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -89,6 +104,8 @@ if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "license_plate" not in st.session_state:
     st.session_state.license_plate = ""
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = "Karte"
 
 # Feste Basis-Daten für P1 bis P10 mit GPS-Koordinaten für die Karte
 BASE_SPOTS = [
@@ -124,21 +141,26 @@ if "spots" not in st.session_state:
     st.session_state.spots = randomize_spot_statuses()
 
 # ==========================================
-# LOGIN SEITE (Mit Bindestrich-Pflicht)
+# LOGIN SEITE (Mit App-Logo & Kennzeichen-Pflicht)
 # ==========================================
 if not st.session_state.logged_in:
-    st.markdown("<h1 style='text-align: center; color: #0d6efd; font-size: 2.2rem;'>🅿️ Where to Park</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #6c757d;'>Mobile KI-Parkplatzsuche</p>", unsafe_allow_html=True)
+    # Logo zentriert anzeigen (Falls die Datei lokal im Repo liegt, wird sie geladen, sonst Platzhalter)
+    try:
+        st.image("Glänzende Parkplatz-Erkennung mit Check-Symbol.png", width=120)
+    except:
+        st.markdown("<h1 style='text-align: center; color: #0b5ed7;'>🅿️</h1>", unsafe_allow_html=True)
+
+    st.markdown("<h1 style='text-align: center; color: #0b5ed7; font-size: 2rem;'>Where to Park</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #6c757d;'>AI PARKING ASSIST</p>", unsafe_allow_html=True)
     
     st.write("")
     
     with st.form("login_form"):
         license_input = st.text_input("Kfz-Kennzeichen eingeben", placeholder="z.B. HH-AB 1234")
-        submit = st.form_submit_button("Einloggen")
+        submit = st.form_submit_button("GET STARTED")
         
         if submit:
             clean_input = license_input.strip()
-            # Validierung: Darf nicht leer sein UND muss einen Bindestrich enthalten
             if clean_input != "" and "-" in clean_input:
                 st.session_state.logged_in = True
                 st.session_state.license_plate = clean_input.upper()
@@ -147,12 +169,13 @@ if not st.session_state.logged_in:
             elif clean_input == "":
                 st.error("Bitte gib dein Kennzeichen ein.")
             else:
-                st.error("Ungültiges Kennzeichen! Bitte gib ein gültiges Kennzeichen mit Bindestrich ein (z.B. HH-AB 1234).")
+                st.error("Bitte gib ein gültiges Kennzeichen mit Bindestrich ein (z.B. HH-AB 1234).")
 
 # ==========================================
 # MAIN APP (NACH LOGIN)
 # ==========================================
 else:
+    # Header-Zeile mit Kennzeichen und Logout
     col_title, col_user = st.columns([2.6, 1.4])
     with col_title:
         st.markdown(f"**🚗 Kennzeichen:** `{st.session_state.license_plate}`")
@@ -161,16 +184,20 @@ else:
             st.session_state.logged_in = False
             st.rerun()
 
-    tab_map, tab_list, tab_ai, tab_info = st.tabs(["🗺️ Karte", "📋 Übersicht", "📷 KI-Scan", "ℹ️ Info"])
+    st.write("---")
 
-    # TAB 1: INTERAKTIVE KARTE
-    with tab_map:
+    # Navigation über Session State steuern (für die untere Leiste)
+    tab = st.session_state.active_tab
+
+    # TAB 1: KARTE (Vollbild)
+    if tab == "Karte":
         st.subheader("Live Parkplatz-Karte")
         
-        if st.button("🔄 Status aktualisieren (Ein-/Ausparken)"):
+        if st.button("🔄 Status aktualisieren"):
             st.session_state.spots = randomize_spot_statuses()
             st.rerun()
 
+        # Vollbild-Karte für Mobile
         m = folium.Map(location=[53.8675, 10.6855], zoom_start=14, tiles="OpenStreetMap")
 
         for spot in st.session_state.spots:
@@ -184,10 +211,10 @@ else:
                 icon=folium.Icon(color=color, icon="info-sign")
             ).add_to(m)
 
-        st_folium(m, width=380, height=350)
+        st_folium(m, width=390, height=480)
 
-    # TAB 2: DETAIL-LISTE (P1 - P10)
-    with tab_list:
+    # TAB 2: ÜBERSICHT (LISTE)
+    elif tab == "Übersicht":
         st.subheader("Alle Parkflächen")
         
         for spot in st.session_state.spots:
@@ -204,8 +231,8 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: LIVE KI-SCAN (6-Zonen Raster)
-    with tab_ai:
+    # TAB 3: KI-SCAN (6-Zonen Raster)
+    elif tab == "KI-Scan":
         st.subheader("6-Zonen Parkplatz-Scanner")
         st.write("Analysiert das Luftbild aufgeteilt in 6 Einzelparkplätze (Asphalt vs. Fahrzeugfarbe):")
         uploaded_file = st.file_uploader("Luftbild hochladen", type=["jpg", "png", "jpeg"])
@@ -259,8 +286,28 @@ else:
                     st.error(f"🚫 **{item['zone']}**: Kein Parkplatz verfügbar (Belegt)")
 
     # TAB 4: INFO
-    with tab_info:
+    elif tab == "Info":
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
         st.write("**KI-Modell:** 6-Zonen Raster-Farb-Analyse")
-        st.write("**Design:** Modernes UI mit Inter-Schriftart")
+        st.write("**Design:** Mobile App mit unterer Navigationsleiste")
+
+    # Echte untere Menüleiste für den Handy-Look
+    st.write("")
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        if st.button("🗺️ Karte"):
+            st.session_state.active_tab = "Karte"
+            st.rerun()
+    with c2:
+        if st.button("📋 Liste"):
+            st.session_state.active_tab = "Übersicht"
+            st.rerun()
+    with c3:
+        if st.button("📷 Scan"):
+            st.session_state.active_tab = "KI-Scan"
+            st.rerun()
+    with c4:
+        if st.button("ℹ️ Info"):
+            st.session_state.active_tab = "Info"
+            st.rerun()

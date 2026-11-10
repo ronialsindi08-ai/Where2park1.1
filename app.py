@@ -124,7 +124,7 @@ if "spots" not in st.session_state:
     st.session_state.spots = randomize_spot_statuses()
 
 # ==========================================
-# LOGIN SEITE
+# LOGIN SEITE (Mit Bindestrich-Pflicht)
 # ==========================================
 if not st.session_state.logged_in:
     st.markdown("<h1 style='text-align: center; color: #0d6efd; font-size: 2.2rem;'>🅿️ Where to Park</h1>", unsafe_allow_html=True)
@@ -137,13 +137,17 @@ if not st.session_state.logged_in:
         submit = st.form_submit_button("Einloggen")
         
         if submit:
-            if license_input.strip() != "":
+            clean_input = license_input.strip()
+            # Validierung: Darf nicht leer sein UND muss einen Bindestrich enthalten
+            if clean_input != "" and "-" in clean_input:
                 st.session_state.logged_in = True
-                st.session_state.license_plate = license_input.upper()
+                st.session_state.license_plate = clean_input.upper()
                 st.session_state.spots = randomize_spot_statuses()
                 st.rerun()
-            else:
+            elif clean_input == "":
                 st.error("Bitte gib dein Kennzeichen ein.")
+            else:
+                st.error("Ungültiges Kennzeichen! Bitte gib ein gültiges Kennzeichen mit Bindestrich ein (z.B. HH-AB 1234).")
 
 # ==========================================
 # MAIN APP (NACH LOGIN)
@@ -200,7 +204,7 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: LIVE KI-SCAN (Unterteilung in 6 Raster-Bereiche mit Farb-Analyse)
+    # TAB 3: LIVE KI-SCAN (6-Zonen Raster)
     with tab_ai:
         st.subheader("6-Zonen Parkplatz-Scanner")
         st.write("Analysiert das Luftbild aufgeteilt in 6 Einzelparkplätze (Asphalt vs. Fahrzeugfarbe):")
@@ -212,7 +216,6 @@ else:
             h, w, _ = img_array.shape
 
             with st.spinner("Teile Bild in 6 Parkzonen auf..."):
-                # Raster: 3 Zeilen, 2 Spalten = 6 Parkplätze
                 rows, cols = 3, 2
                 cell_h = h // rows
                 cell_w = w // cols
@@ -223,18 +226,15 @@ else:
                 spot_index = 1
                 for r in range(rows):
                     for c in range(cols):
-                        # Ausschnitt für den jeweiligen Parkplatz berechnen
                         y1, y2 = r * cell_h, (r + 1) * cell_h
                         x1, x2 = c * cell_w, (c + 1) * cell_w
                         
                         cell = img_array[y1:y2, x1:x2]
                         
-                        # Farb-Analyse (Sättigung im HSV-Farbraum: Grau = niedrig, Farbe/Auto = hoch)
                         hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
                         saturation = hsv_cell[:, :, 1]
                         avg_sat = np.mean(saturation)
                         
-                        # Schwellenwert: Wenn Sättigung niedrig ist -> Asphalt (Frei), sonst Fahrzeug (Belegt)
                         is_occupied = avg_sat > 30
                         status_text = "Belegt" if is_occupied else "Frei"
                         
@@ -243,7 +243,6 @@ else:
                             "status": status_text
                         })
                         
-                        # Rechteck ins Bild einzeichnen (Grün für frei, Rot für belegt)
                         color_box = (0, 200, 0) if not is_occupied else (200, 0, 0)
                         cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color_box, 4)
                         

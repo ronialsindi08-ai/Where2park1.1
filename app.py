@@ -223,7 +223,7 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: KI-SCAN (Präzise Raster-Erkennung mit Pixel-Ratio-Auswertung)
+    # TAB 3: KI-SCAN (Präzise Raster-Erkennung mit Farb-, Sättigungs- und Helligkeitsprüfung)
     elif tab == "KI-Scan":
         st.subheader("Smart Parkplatz-Scanner")
         st.write("Wähle das Raster-Format deines Fotos aus:")
@@ -267,7 +267,7 @@ else:
             else:
                 rows, cols = 3, 2
 
-            with st.spinner(f"Analysiere Raster ({rows}x{cols}) mit Pixel-Prüfung..."):
+            with st.spinner(f"Analysiere Raster ({rows}x{cols}) mit verbesserter Weiß-Erkennung..."):
                 cell_h = h // rows
                 cell_w = w // cols
                 
@@ -292,7 +292,7 @@ else:
                             if core_cell.size == 0:
                                 core_cell = cell
 
-                            # PIXEL-GENAUE ANALYSE IM KERNBEREICH
+                            # 1. Farbdifferenz & Sättigung
                             r_ch, g_ch, b_ch = cv2.split(core_cell)
                             diff_rg = cv2.absdiff(r_ch, g_ch)
                             diff_gb = cv2.absdiff(g_ch, b_ch)
@@ -302,13 +302,18 @@ else:
                             hsv_core = cv2.cvtColor(core_cell, cv2.COLOR_RGB2HSV)
                             pixel_sat = hsv_core[:, :, 1].astype(float)
                             
-                            # Ein Pixel gilt als Auto-Pixel, wenn er sich stark von grau unterscheidet oder farbig ist
-                            car_pixels = (pixel_color_diff > 35) | (pixel_sat > 20)
+                            # 2. Helligkeits-Check für weiße und schwarze Autos auf Asphalt
+                            gray_core = cv2.cvtColor(core_cell, cv2.COLOR_RGB2GRAY)
+                            pixel_gray = gray_core.astype(float)
+                            # Weißes Auto ist sehr hell (> 165), schwarzes Auto sehr dunkel (< 65)
+                            is_white_or_dark = (pixel_gray > 165) | (pixel_gray < 65)
+                            
+                            # Ein Pixel gehört zu einem Auto, wenn es farbig ist, Farbunterschiede hat ODER sehr hell/dunkel (weiß/schwarz) ist
+                            car_pixels = (pixel_color_diff > 35) | (pixel_sat > 18) | is_white_or_dark
                             car_pixel_ratio = np.sum(car_pixels) / core_cell.size
                             
-                            # Erst wenn mehr als 18% des Kerns durch ein Auto bedeckt sind -> Belegt (Rot)
-                            # Andernfalls gilt der Platz als Frei (Grün)
-                            is_occupied = car_pixel_ratio > 0.18
+                            # Ab 22% Bedeckung im Kern gilt der Parkplatz als belegt
+                            is_occupied = car_pixel_ratio > 0.22
                             status_text = "frei" if not is_occupied else "belegt"
                             
                             grid_results.append({
@@ -340,7 +345,7 @@ else:
     elif tab == "Info":
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** Pixel-Ratio Kernbereich-Analyse (Falschparker-tolerant)")
+        st.write("**KI-Modell:** Pixel-Ratio mit Weiß-/Schwarz-Helligkeitserkennung")
         st.write("**Design:** Fixierte untere Navigationsleiste")
 
     # Fixierte untere Navigationsleiste

@@ -223,12 +223,11 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: KI-SCAN (Grau = Asphalt/Frei vs. Farbe = Fahrzeug/Belegt)
+    # TAB 3: KI-SCAN (Mit Kernbereichs-Analyse gegen Falschparker-Fehler)
     elif tab == "KI-Scan":
         st.subheader("Smart Parkplatz-Scanner")
         st.write("Wähle das Raster-Format deines Fotos aus:")
         
-        # Dropdown-Auswahl bis 12 Parkplätze
         layout_choice = st.selectbox(
             "Raster-Format wählen:",
             [
@@ -249,7 +248,6 @@ else:
             img_array = np.array(image)
             h, w, _ = img_array.shape
 
-            # Zeilen und Spalten festlegen
             if "1x1" in layout_choice:
                 rows, cols = 1, 1
             elif "2x1" in layout_choice:
@@ -267,7 +265,7 @@ else:
             else:
                 rows, cols = 3, 2
 
-            with st.spinner(f"Analysiere Raster ({rows}x{cols})..."):
+            with st.spinner(f"Analysiere Raster ({rows}x{cols}) mit Kernbereich-Prüfung..."):
                 cell_h = h // rows
                 cell_w = w // cols
                 
@@ -282,17 +280,28 @@ else:
                         
                         cell = img_array[y1:y2, x1:x2]
                         if cell.size > 0:
-                            # GRAU- VS. FARB-ANALYSE
-                            # Bei grauem Asphalt sind die R, G, B Kanäle fast identisch. 
-                            # Bei einem Auto (egal ob rot, blau, schwarz oder weiß) gibt es Farbunterschiede oder eine Farbsättigung.
-                            r_ch, g_ch, b_ch = cv2.split(cell)
-                            color_diff = np.mean(cv2.absdiff(r_ch, g_ch)) + np.mean(cv2.absdiff(g_ch, b_ch)) + np.mean(cv2.absdiff(r_ch, b_ch))
+                            ch, cw, _ = cell.shape
                             
-                            hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
-                            saturation = np.mean(hsv_cell[:, :, 1])
+                            # KERNBEREICH (Core-Center): Äußere Ränder (15%) abschneiden,
+                            # damit Linien oder minimale Überlappungen von Falschparkern ignoriert werden!
+                            my = int(ch * 0.15)
+                            mx = int(cw * 0.15)
+                            core_cell = cell[my:ch-my, mx:cw-mx]
+                            if core_cell.size == 0:
+                                core_cell = cell
+
+                            # Farb- und Grau-Abweichung im Kernbereich messen
+                            r_ch, g_ch, b_ch = cv2.split(core_cell)
+                            color_diff = (np.mean(cv2.absdiff(r_ch, g_ch)) + 
+                                          np.mean(cv2.absdiff(g_ch, b_ch)) + 
+                                          np.mean(cv2.absdiff(r_ch, b_ch)))
                             
-                            # Wenn signifikante Farbabweichung oder Sättigung vorliegt -> Auto (belegt), sonst Asphalt (frei)
-                            is_occupied = (color_diff > 8.0) or (saturation > 12)
+                            hsv_core = cv2.cvtColor(core_cell, cv2.COLOR_RGB2HSV)
+                            saturation = np.mean(hsv_core[:, :, 1])
+                            
+                            # Ein Parkplatz gilt erst dann als belegt, wenn im KERN signifikant Farbe/Fahrzeug steht.
+                            # Kleine Berührungen am Rand (Falschparker) triggern das nicht mehr.
+                            is_occupied = (color_diff > 10.0) or (saturation > 15)
                             status_text = "frei" if not is_occupied else "belegt"
                             
                             grid_results.append({
@@ -309,7 +318,7 @@ else:
                             
                             spot_index += 1
 
-            st.image(annotated_img, caption=f"Analyseergebnis ({len(grid_results)} Parkplätze)", use_column_width=True)
+            st.image(annotated_img, caption=f"Präzisions-Scan ({len(grid_results)} Parkplätze)", use_column_width=True)
             
             st.write("---")
             st.markdown(f"### 📊 Einzelauswertung:")
@@ -323,7 +332,7 @@ else:
     elif tab == "Info":
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** Grau- vs. Farbanalyse für Vogelperspektiven")
+        st.write("**KI-Modell:** Kernbereich-Farb- & Asphaltanalyse (Falschparker-tolerant)")
         st.write("**Design:** Fixierte untere Navigationsleiste")
 
     # Fixierte untere Navigationsleiste

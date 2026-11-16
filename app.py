@@ -223,12 +223,12 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: KI-SCAN (Auswahl von 1x1 bis 4x3 / bis zu 12 Parkplätze)
+    # TAB 3: KI-SCAN (Präzise Raster-Erkennung mit Farb- & Kantenauswertung)
     elif tab == "KI-Scan":
-        st.subheader("Smart Parkplatz-Konfigurator")
+        st.subheader("Smart Parkplatz-Scanner")
         st.write("Wähle das Format deines Parkplatz-Fotos aus:")
         
-        # Auswahlliste wie gewünscht (von 1x1 bis zu 12 Parkplätzen)
+        # Dropdown-Auswahl bis 12 Parkplätze
         layout_choice = st.selectbox(
             "Raster-Format wählen:",
             [
@@ -249,7 +249,7 @@ else:
             img_array = np.array(image)
             h, w, _ = img_array.shape
 
-            # Zeilen und Spalten je nach Auswahl festlegen
+            # Zeilen und Spalten festlegen
             if "1x1" in layout_choice:
                 rows, cols = 1, 1
             elif "2x1" in layout_choice:
@@ -267,7 +267,7 @@ else:
             else:
                 rows, cols = 3, 2
 
-            with st.spinner(f"Analysiere {rows}x{cols} Raster..."):
+            with st.spinner(f"Analysiere Raster ({rows}x{cols})..."):
                 cell_h = h // rows
                 cell_w = w // cols
                 
@@ -282,17 +282,17 @@ else:
                         
                         cell = img_array[y1:y2, x1:x2]
                         if cell.size > 0:
-                            # 1. Farb-Sättigung prüfen (für bunte Autos)
+                            # 1. Farb-Sättigung (für bunde Autos wie rot, blau etc.)
                             hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
-                            saturation = hsv_cell[:, :, 1]
-                            avg_sat = np.mean(saturation)
+                            avg_sat = np.mean(hsv_cell[:, :, 1])
                             
-                            # 2. Textur / Standardabweichung prüfen (erkennt weiße, silberne und schwarze Autos auf grauem Asphalt)
+                            # 2. Graustufen-Textur & Kanten (Canny-Edge-Erkennung für weiße, silberne und schwarze Autos)
                             gray_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2GRAY)
-                            std_dev = np.std(gray_cell)
+                            edges = cv2.Canny(gray_cell, 50, 150)
+                            edge_density = np.sum(edges > 0) / edges.size
                             
-                            # Logik: Entweder Farbe weicht ab ODER die Textur (Kanten/Schatten/Scheiben von weißen/schwarzen Autos) ist ungleichmäßig
-                            is_occupied = (avg_sat > 16) or (std_dev > 12)
+                            # Wenn entweder Farbe (Sättigung) ODER Kanten/Struktur (Auto mit Scheiben/Kanten) vorhanden sind -> Belegt
+                            is_occupied = (avg_sat > 14) or (edge_density > 0.025)
                             status_text = "belegt" if is_occupied else "frei"
                             
                             grid_results.append({
@@ -303,7 +303,7 @@ else:
                             color_box = (0, 200, 0) if not is_occupied else (200, 0, 0)
                             cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color_box, 3)
                             
-                            # P-Nummer direkt ins Bild zeichnen
+                            # P-Nummer ins Bild zeichnen
                             cv2.putText(annotated_img, f"P{spot_index}", (x1 + 10, y1 + 30), 
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
                             
@@ -323,7 +323,7 @@ else:
     elif tab == "Info":
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** Sättigungs- & Textur-Erkennung (inkl. Weißer-Auto-Erkennung)")
+        st.write("**KI-Modell:** Farb- & Kanten-Erkennung (für weiße & bunte Autos)")
         st.write("**Design:** Fixierte untere Navigationsleiste")
 
     # Fixierte untere Navigationsleiste

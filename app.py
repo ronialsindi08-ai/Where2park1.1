@@ -15,53 +15,53 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom Styling für echtes App-Gefühl, fixierte untere Leiste & saubere Abstände
+# Custom Styling für echtes App-Gefühl, fixierte untere Leiste & perfekten Kontrast
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
+        background-color: #f4f6f9;
+        color: #212529;
     }
     .block-container {
-        max-width: 450px;
-        padding-top: 2rem;
-        padding-bottom: 6rem;
+        max-width: 450px !important;
+        padding-top: 1.5rem !important;
+        padding-bottom: 7rem !important;
+        margin: 0 auto;
     }
     .stButton>button {
         width: 100%;
         background-color: #0b5ed7;
         color: white;
-        border-radius: 10px;
-        height: 3em;
+        border-radius: 12px;
+        height: 3.2em;
         font-weight: 600;
         border: none;
+        box-shadow: 0 4px 10px rgba(11, 94, 215, 0.2);
     }
-    .badge-free {
-        background-color: #198754;
-        color: white;
-        padding: 4px 10px;
-        border-radius: 6px;
-        font-weight: 600;
-        font-size: 0.85rem;
-        float: right;
+    .stButton>button:hover {
+        background-color: #0a58ca;
     }
-    .badge-busy {
-        background-color: #dc3545;
-        color: white;
-        padding: 4px 10px;
-        border-radius: 6px;
-        font-weight: 600;
-        font-size: 0.85rem;
-        float: right;
+    .header-box {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background-color: #ffffff;
+        padding: 12px 16px;
+        border-radius: 14px;
+        border: 1px solid #dee2e6;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.04);
     }
     .spot-card {
         background-color: #ffffff;
         border: 1px solid #dee2e6;
-        border-radius: 12px;
-        padding: 14px;
+        border-radius: 14px;
+        padding: 16px;
         margin-bottom: 12px;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         color: #212529;
     }
     .spot-title {
@@ -74,16 +74,19 @@ st.markdown("""
         color: #495057;
         margin-top: 4px;
     }
+    /* Absolut fixierte untere Navigationsleiste passgenau für den Mobile-Container */
     .fixed-bottom-nav {
         position: fixed;
         bottom: 0;
-        left: 0;
+        left: 50%;
+        transform: translateX(-50%);
         width: 100%;
+        max-width: 450px;
         background-color: #ffffff;
         border-top: 1px solid #dee2e6;
-        padding: 8px 0;
+        padding: 10px 0;
         z-index: 99999;
-        box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+        box-shadow: 0 -4px 15px rgba(0,0,0,0.08);
     }
     </style>
 """, unsafe_allow_html=True)
@@ -137,18 +140,22 @@ if "spots" not in st.session_state:
     st.session_state.spots = randomize_spot_statuses()
 
 # ==========================================
-# LOGIN SEITE (Mit Kennzeichen- & Bindestrich-Pflicht)
+# LOGIN SEITE
 # ==========================================
 if not st.session_state.logged_in:
-    try:
-        st.image("Glänzende Parkplatz-Erkennung mit Check-Symbol.png", use_column_width=True)
-    except:
-        st.markdown("<h1 style='text-align: center; color: #0b5ed7;'>🅿️</h1>", unsafe_allow_html=True)
+    # Perfekt eingebundenes App-Logo (SVG)
+    st.markdown("""
+        <div style="display: flex; justify-content: center; margin-bottom: 0.5rem; margin-top: 1rem;">
+            <svg width="84" height="84" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="100" height="100" rx="24" fill="#0b5ed7"/>
+                <path d="M30 70V30H48C56 30 62 35 62 43C62 51 56 56 48 56H38V70H30ZM38 48H47C51 48 54 45 54 43C54 41 51 38 47 38H38V48Z" fill="white"/>
+                <path d="M55 52L68 70H78L62 48L75 30H65L55 43V30H48V70H55V52Z" fill="white" fill-opacity="0.85"/>
+            </svg>
+        </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("<h1 style='text-align: center; color: #0b5ed7; font-size: 2rem;'>Where to Park</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #6c757d;'>AI PARKING ASSIST</p>", unsafe_allow_html=True)
-    
-    st.write("")
+    st.markdown("<h1 style='text-align: center; color: #0b5ed7; font-size: 2.2rem; margin-bottom: 0;'>Where to Park</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #6c757d; font-size: 0.9rem; letter-spacing: 1px; margin-bottom: 2rem;'>AI PARKING ASSIST</p>", unsafe_allow_html=True)
     
     with st.form("login_form"):
         license_input = st.text_input("Kfz-Kennzeichen eingeben", placeholder="z.B. HH-AB 1234")
@@ -170,19 +177,21 @@ if not st.session_state.logged_in:
 # MAIN APP (NACH LOGIN)
 # ==========================================
 else:
-    col_title, col_user = st.columns([2.6, 1.4])
-    with col_title:
-        st.markdown(f"**🚗 Kennzeichen:** `{st.session_state.license_plate}`")
-    with col_user:
-        if st.button("Logout", key="logout"):
-            st.session_state.logged_in = False
-            st.rerun()
-
-    st.write("---")
+    # Optimierter Header ohne Abschneiden
+    st.markdown(f"""
+        <div class="header-box">
+            <div><span style="font-size: 0.8rem; color: #6c757d; display: block;">FAHRZEUG</span><strong style="color: #0b5ed7; font-size: 1rem;">{st.session_state.license_plate}</strong></div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("Logout", key="logout"):
+        st.session_state.logged_in = False
+        st.rerun()
+        
+    st.markdown("</div>", unsafe_allow_html=True)
 
     tab = st.session_state.active_tab
 
-    # TAB 1: KARTE (Vollbild)
+    # TAB 1: KARTE (Vollbild / Display-füllend)
     if tab == "Karte":
         st.subheader("Live Parkplatz-Karte")
         
@@ -203,32 +212,30 @@ else:
                 icon=folium.Icon(color=color, icon="info-sign")
             ).add_to(m)
 
-        st_folium(m, width=390, height=450)
+        # Karte nutzt nun die volle Breite des Containers (410px) für echten Mobile-Look
+        st_folium(m, width=410, height=520)
 
     # TAB 2: ÜBERSICHT (LISTE)
     elif tab == "Übersicht":
         st.subheader("Alle Parkflächen")
         
         for spot in st.session_state.spots:
-            if spot["status"] == "Frei":
-                badge = '<span class="badge-free">FREI</span>'
-            else:
-                badge = '<span class="badge-busy">BELEGT</span>'
+            badge_class = "badge-free" if spot["status"] == "Frei" else "badge-busy"
+            badge_text = "FREI" if spot["status"] == "Frei" else "BELEGT"
 
             st.markdown(f"""
             <div class="spot-card">
-                {badge}
+                <span class="{badge_class}">{badge_text}</span>
                 <div class="spot-title">Parkfläche {spot['name']}</div>
                 <div class="spot-info">Entfernung: {spot['distance']} km &nbsp;|&nbsp; Tarif: {spot['price']}</div>
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: KI-SCAN (Präzise Raster-Erkennung mit Farb-, Sättigungs- und Helligkeitsprüfung)
+    # TAB 3: KI-SCAN (Manuelle Rasterwahl & präzise Grün/Rot-Erkennung)
     elif tab == "KI-Scan":
         st.subheader("Smart Parkplatz-Scanner")
         st.write("Wähle das Raster-Format deines Fotos aus:")
         
-        # Dropdown-Auswahl bis 12 Parkplätze
         layout_choice = st.selectbox(
             "Raster-Format wählen:",
             [
@@ -249,7 +256,6 @@ else:
             img_array = np.array(image)
             h, w, _ = img_array.shape
 
-            # Zeilen und Spalten festlegen
             if "1x1" in layout_choice:
                 rows, cols = 1, 1
             elif "2x1" in layout_choice:
@@ -267,7 +273,7 @@ else:
             else:
                 rows, cols = 3, 2
 
-            with st.spinner(f"Analysiere Raster ({rows}x{cols}) mit verbesserter Weiß-Erkennung..."):
+            with st.spinner(f"Analysiere Raster ({rows}x{cols})..."):
                 cell_h = h // rows
                 cell_w = w // cols
                 
@@ -284,15 +290,13 @@ else:
                         if cell.size > 0:
                             ch, cw, _ = cell.shape
                             
-                            # KERNBEREICH: Äußere Ränder (20%) abschneiden, 
-                            # damit Falschparker auf Nachbarspuren den freien Platz nicht blockieren
+                            # Kernbereich-Analyse zur Vermeidung von Falschparker-Fehlern
                             my = int(ch * 0.20)
                             mx = int(cw * 0.20)
                             core_cell = cell[my:ch-my, mx:cw-mx]
                             if core_cell.size == 0:
                                 core_cell = cell
 
-                            # 1. Farbdifferenz & Sättigung
                             r_ch, g_ch, b_ch = cv2.split(core_cell)
                             diff_rg = cv2.absdiff(r_ch, g_ch)
                             diff_gb = cv2.absdiff(g_ch, b_ch)
@@ -302,17 +306,13 @@ else:
                             hsv_core = cv2.cvtColor(core_cell, cv2.COLOR_RGB2HSV)
                             pixel_sat = hsv_core[:, :, 1].astype(float)
                             
-                            # 2. Helligkeits-Check für weiße und schwarze Autos auf Asphalt
                             gray_core = cv2.cvtColor(core_cell, cv2.COLOR_RGB2GRAY)
                             pixel_gray = gray_core.astype(float)
-                            # Weißes Auto ist sehr hell (> 165), schwarzes Auto sehr dunkel (< 65)
                             is_white_or_dark = (pixel_gray > 165) | (pixel_gray < 65)
                             
-                            # Ein Pixel gehört zu einem Auto, wenn es farbig ist, Farbunterschiede hat ODER sehr hell/dunkel (weiß/schwarz) ist
                             car_pixels = (pixel_color_diff > 35) | (pixel_sat > 18) | is_white_or_dark
                             car_pixel_ratio = np.sum(car_pixels) / core_cell.size
                             
-                            # Ab 22% Bedeckung im Kern gilt der Parkplatz als belegt
                             is_occupied = car_pixel_ratio > 0.22
                             status_text = "frei" if not is_occupied else "belegt"
                             
@@ -321,20 +321,17 @@ else:
                                 "status": status_text
                             })
                             
-                            # GRÜN für Frei, ROT für Belegt
                             box_color = (0, 255, 0) if not is_occupied else (255, 0, 0)
                             cv2.rectangle(annotated_img, (x1, y1), (x2, y2), box_color, 4)
-                            
-                            # P-Nummer ins Bild zeichnen
                             cv2.putText(annotated_img, f"P{spot_index}", (x1 + 10, y1 + 35), 
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
                             
                             spot_index += 1
 
-            st.image(annotated_img, caption=f"Ergebnis (Grün = Frei, Rot = Belegt)", use_column_width=True)
+            st.image(annotated_img, caption="Ergebnis (Grün = Frei, Rot = Belegt)", use_column_width=True)
             
             st.write("---")
-            st.markdown(f"### 📊 Einzelauswertung:")
+            st.markdown("### 📊 Einzelauswertung:")
             for item in grid_results:
                 if item["status"] == "frei":
                     st.success(f"✅ **{item['zone']} ist frei**")
@@ -345,10 +342,10 @@ else:
     elif tab == "Info":
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** Pixel-Ratio mit Weiß-/Schwarz-Helligkeitserkennung")
-        st.write("**Design:** Fixierte untere Navigationsleiste")
+        st.write("**KI-Modell:** Präzisions-Raster mit Kernbereichs-Analyse")
+        st.write("**Design:** Mobile UI mit fixierter unterer Navigation")
 
-    # Fixierte untere Navigationsleiste
+    # Absolut fixierte untere Navigationsleiste
     st.markdown("""
         <div class="fixed-bottom-nav">
             <div style="display: flex; justify-content: space-around; max-width: 450px; margin: 0 auto;">

@@ -223,11 +223,12 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: KI-SCAN (Mit Kernbereichs-Analyse gegen Falschparker-Fehler)
+    # TAB 3: KI-SCAN (Präzise Raster-Erkennung mit Grün/Rot Markierung)
     elif tab == "KI-Scan":
         st.subheader("Smart Parkplatz-Scanner")
         st.write("Wähle das Raster-Format deines Fotos aus:")
         
+        # Dropdown-Auswahl bis 12 Parkplätze
         layout_choice = st.selectbox(
             "Raster-Format wählen:",
             [
@@ -248,6 +249,7 @@ else:
             img_array = np.array(image)
             h, w, _ = img_array.shape
 
+            # Zeilen und Spalten festlegen
             if "1x1" in layout_choice:
                 rows, cols = 1, 1
             elif "2x1" in layout_choice:
@@ -265,7 +267,7 @@ else:
             else:
                 rows, cols = 3, 2
 
-            with st.spinner(f"Analysiere Raster ({rows}x{cols}) mit Kernbereich-Prüfung..."):
+            with st.spinner(f"Analysiere Raster ({rows}x{cols})..."):
                 cell_h = h // rows
                 cell_w = w // cols
                 
@@ -282,15 +284,15 @@ else:
                         if cell.size > 0:
                             ch, cw, _ = cell.shape
                             
-                            # KERNBEREICH (Core-Center): Äußere Ränder (15%) abschneiden,
-                            # damit Linien oder minimale Überlappungen von Falschparkern ignoriert werden!
-                            my = int(ch * 0.15)
-                            mx = int(cw * 0.15)
+                            # KERNBEREICH: Äußere Ränder (20%) abschneiden, 
+                            # damit schiefe Autos / Falschparker in Nachbarspuren den freien Platz nicht verfälschen
+                            my = int(ch * 0.20)
+                            mx = int(cw * 0.20)
                             core_cell = cell[my:ch-my, mx:cw-mx]
                             if core_cell.size == 0:
                                 core_cell = cell
 
-                            # Farb- und Grau-Abweichung im Kernbereich messen
+                            # Farbanalyse im Kernbereich (Grau vs. Farbe)
                             r_ch, g_ch, b_ch = cv2.split(core_cell)
                             color_diff = (np.mean(cv2.absdiff(r_ch, g_ch)) + 
                                           np.mean(cv2.absdiff(g_ch, b_ch)) + 
@@ -299,9 +301,8 @@ else:
                             hsv_core = cv2.cvtColor(core_cell, cv2.COLOR_RGB2HSV)
                             saturation = np.mean(hsv_core[:, :, 1])
                             
-                            # Ein Parkplatz gilt erst dann als belegt, wenn im KERN signifikant Farbe/Fahrzeug steht.
-                            # Kleine Berührungen am Rand (Falschparker) triggern das nicht mehr.
-                            is_occupied = (color_diff > 10.0) or (saturation > 15)
+                            # Toleranterer Schwellenwert: Nur wenn im Kernbereich deutliche Farbe/Objekt ist -> Belegt
+                            is_occupied = (color_diff > 14.0) or (saturation > 18)
                             status_text = "frei" if not is_occupied else "belegt"
                             
                             grid_results.append({
@@ -309,16 +310,17 @@ else:
                                 "status": status_text
                             })
                             
-                            color_box = (0, 200, 0) if not is_occupied else (200, 0, 0)
-                            cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color_box, 3)
+                            # GRÜN für Frei (0, 255, 0 in RGB), ROT für Belegt (255, 0, 0 in RGB)
+                            box_color = (0, 255, 0) if not is_occupied else (255, 0, 0)
+                            cv2.rectangle(annotated_img, (x1, y1), (x2, y2), box_color, 4)
                             
                             # P-Nummer ins Bild zeichnen
-                            cv2.putText(annotated_img, f"P{spot_index}", (x1 + 10, y1 + 30), 
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                            cv2.putText(annotated_img, f"P{spot_index}", (x1 + 10, y1 + 35), 
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
                             
                             spot_index += 1
 
-            st.image(annotated_img, caption=f"Präzisions-Scan ({len(grid_results)} Parkplätze)", use_column_width=True)
+            st.image(annotated_img, caption=f"Ergebnis (Grün = Frei, Rot = Belegt)", use_column_width=True)
             
             st.write("---")
             st.markdown(f"### 📊 Einzelauswertung:")
@@ -332,7 +334,7 @@ else:
     elif tab == "Info":
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** Kernbereich-Farb- & Asphaltanalyse (Falschparker-tolerant)")
+        st.write("**KI-Modell:** Kernbereich-Asphalt- & Farbanalyse")
         st.write("**Design:** Fixierte untere Navigationsleiste")
 
     # Fixierte untere Navigationsleiste

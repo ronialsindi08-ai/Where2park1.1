@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom Styling für echtes App-Gefühl, fixierte untere Leiste & perfekten Kontrast
+# Custom Styling für echtes App-Gefühl & dauerhaft fixierte untere Leiste
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -28,7 +28,7 @@ st.markdown("""
     .block-container {
         max-width: 450px !important;
         padding-top: 1.5rem !important;
-        padding-bottom: 7rem !important;
+        padding-bottom: 7rem !important; /* Platz für die fixierte Leiste */
         margin: 0 auto;
     }
     .stButton>button {
@@ -74,7 +74,7 @@ st.markdown("""
         color: #495057;
         margin-top: 4px;
     }
-    /* Absolut fixierte untere Navigationsleiste passgenau für den Mobile-Container */
+    /* Die Navigationsleiste ist nun IMMER fix am unteren Bildschirmrand verankert */
     .fixed-bottom-nav {
         position: fixed;
         bottom: 0;
@@ -143,7 +143,7 @@ if "spots" not in st.session_state:
 # LOGIN SEITE
 # ==========================================
 if not st.session_state.logged_in:
-    # Perfekt eingebundenes App-Logo (SVG)
+    # Logo eingebunden
     st.markdown("""
         <div style="display: flex; justify-content: center; margin-bottom: 0.5rem; margin-top: 1rem;">
             <svg width="84" height="84" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -177,7 +177,6 @@ if not st.session_state.logged_in:
 # MAIN APP (NACH LOGIN)
 # ==========================================
 else:
-    # Optimierter Header ohne Abschneiden
     st.markdown(f"""
         <div class="header-box">
             <div><span style="font-size: 0.8rem; color: #6c757d; display: block;">FAHRZEUG</span><strong style="color: #0b5ed7; font-size: 1rem;">{st.session_state.license_plate}</strong></div>
@@ -191,7 +190,7 @@ else:
 
     tab = st.session_state.active_tab
 
-    # TAB 1: KARTE (Vollbild / Display-füllend)
+    # TAB 1: KARTE
     if tab == "Karte":
         st.subheader("Live Parkplatz-Karte")
         
@@ -212,7 +211,6 @@ else:
                 icon=folium.Icon(color=color, icon="info-sign")
             ).add_to(m)
 
-        # Karte nutzt nun die volle Breite des Containers (410px) für echten Mobile-Look
         st_folium(m, width=410, height=520)
 
     # TAB 2: ÜBERSICHT (LISTE)
@@ -231,7 +229,7 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: KI-SCAN (Manuelle Rasterwahl & präzise Grün/Rot-Erkennung)
+    # TAB 3: KI-SCAN
     elif tab == "KI-Scan":
         st.subheader("Smart Parkplatz-Scanner")
         st.write("Wähle das Raster-Format deines Fotos aus:")
@@ -290,7 +288,6 @@ else:
                         if cell.size > 0:
                             ch, cw, _ = cell.shape
                             
-                            # Kernbereich-Analyse zur Vermeidung von Falschparker-Fehlern
                             my = int(ch * 0.20)
                             mx = int(cw * 0.20)
                             core_cell = cell[my:ch-my, mx:cw-mx]
@@ -343,9 +340,9 @@ else:
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
         st.write("**KI-Modell:** Präzisions-Raster mit Kernbereichs-Analyse")
-        st.write("**Design:** Mobile UI mit fixierter unterer Navigation")
+        st.write("**Design:** Fixierte untere Navigation (Viewport-gesichert)")
 
-    # Absolut fixierte untere Navigationsleiste
+    # Dauerhaft fixierte untere Navigationsleiste
     st.markdown("""
         <div class="fixed-bottom-nav">
             <div style="display: flex; justify-content: space-around; max-width: 450px; margin: 0 auto;">

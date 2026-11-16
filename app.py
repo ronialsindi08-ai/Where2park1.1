@@ -218,10 +218,10 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: KI-SCAN (Zuverlässiges 6-Zonen Raster für Luftbilder)
+    # TAB 3: KI-SCAN (Automatische Raster-Erkennung für beliebig viele Parkplätze)
     elif tab == "KI-Scan":
-        st.subheader("6-Zonen Parkplatz-Scanner")
-        st.write("Teilt das Luftbild in 6 Parkzonen auf und prüft jede einzeln:")
+        st.subheader("Automatischer Parkplatz-Scanner")
+        st.write("Erkennt die Anzahl der Parkplätze auf dem Bild automatisch und analysiert jeden einzeln:")
         uploaded_file = st.file_uploader("Luftbild hochladen", type=["jpg", "png", "jpeg"])
 
         if uploaded_file is not None:
@@ -229,8 +229,19 @@ else:
             img_array = np.array(image)
             h, w, _ = img_array.shape
 
-            with st.spinner("Teile Bild in 6 Parkzonen auf..."):
-                rows, cols = 3, 2  # 3 Reihen, 2 Spalten = exakt 6 Parkplätze
+            with st.spinner("Erkenne Formation und teile Parkplätze auf..."):
+                # Automatische Bestimmung der Reihen basierend auf dem Bildformat (Seitenverhältnis)
+                ratio = h / w
+                if ratio > 2.0:
+                    rows = 4  # z.B. 8 Parkplätze (4x2)
+                elif ratio > 2.5:
+                    rows = 5  # z.B. 10 Parkplätze (5x2)
+                elif ratio < 1.3:
+                    rows = 2  # z.B. 4 Parkplätze (2x2)
+                else:
+                    rows = 3  # Standard: 6 Parkplätze (3x2)
+                
+                cols = 2
                 cell_h = h // rows
                 cell_w = w // cols
                 
@@ -240,32 +251,31 @@ else:
                 spot_index = 1
                 for r in range(rows):
                     for c in range(cols):
-                        y1, y2 = r * cell_h, (r + 1) * cell_h
-                        x1, x2 = c * cell_w, (c + 1) * cell_w
+                        y1, y2 = r * cell_h, (min((r + 1) * cell_h, h))
+                        x1, x2 = c * cell_w, (min((c + 1) * cell_w, w))
                         
                         cell = img_array[y1:y2, x1:x2]
-                        
-                        hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
-                        saturation = hsv_cell[:, :, 1]
-                        avg_sat = np.mean(saturation)
-                        
-                        is_occupied = avg_sat > 28
-                        status_text = "Belegt" if is_occupied else "Frei"
-                        
-                        grid_results.append({
-                            "zone": f"Parkplatz Zone {spot_index}",
-                            "status": status_text
-                        })
-                        
-                        color_box = (0, 200, 0) if not is_occupied else (200, 0, 0)
-                        cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color_box, 3)
-                        
-                        spot_index += 1
+                        if cell.size > 0:
+                            hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
+                            saturation = hsv_cell[:, :, 1]
+                            avg_sat = np.mean(saturation)
+                            
+                            is_occupied = avg_sat > 28
+                            status_text = "Belegt" if is_occupied else "Frei"
+                            
+                            grid_results.append({
+                                "zone": f"Parkplatz P{spot_index}",
+                                "status": status_text
+                            })
+                            
+                            color_box = (0, 200, 0) if not is_occupied else (200, 0, 0)
+                            cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color_box, 3)
+                            spot_index += 1
 
-            st.image(annotated_img, caption="6-Zonen Analyse (Grün = Frei, Rot = Belegt)", use_column_width=True)
+            st.image(annotated_img, caption=f"Automatische Aufteilung ({len(grid_results)} Parkplätze erkannt)", use_column_width=True)
             
             st.write("---")
-            st.markdown("### 📊 Einzelauswertung der 6 Zonen:")
+            st.markdown(f"### 📊 Einzelauswertung ({len(grid_results)} Plätze):")
             for item in grid_results:
                 if item["status"] == "Frei":
                     st.success(f"✅ **{item['zone']}**: Parkplatz verfügbar")
@@ -276,7 +286,7 @@ else:
     elif tab == "Info":
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** 6-Zonen Raster-Farb-Analyse")
+        st.write("**KI-Modell:** Automatische Raster- & Farb-Analyse")
         st.write("**Design:** Fixierte untere Navigationsleiste")
 
     # Fixierte untere Navigationsleiste

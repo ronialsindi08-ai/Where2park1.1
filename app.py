@@ -223,7 +223,7 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: KI-SCAN (Präzise Raster-Erkennung mit Grün/Rot Markierung)
+    # TAB 3: KI-SCAN (Präzise Raster-Erkennung mit Pixel-Ratio-Auswertung)
     elif tab == "KI-Scan":
         st.subheader("Smart Parkplatz-Scanner")
         st.write("Wähle das Raster-Format deines Fotos aus:")
@@ -267,7 +267,7 @@ else:
             else:
                 rows, cols = 3, 2
 
-            with st.spinner(f"Analysiere Raster ({rows}x{cols})..."):
+            with st.spinner(f"Analysiere Raster ({rows}x{cols}) mit Pixel-Prüfung..."):
                 cell_h = h // rows
                 cell_w = w // cols
                 
@@ -285,24 +285,30 @@ else:
                             ch, cw, _ = cell.shape
                             
                             # KERNBEREICH: Äußere Ränder (20%) abschneiden, 
-                            # damit schiefe Autos / Falschparker in Nachbarspuren den freien Platz nicht verfälschen
+                            # damit Falschparker auf Nachbarspuren den freien Platz nicht blockieren
                             my = int(ch * 0.20)
                             mx = int(cw * 0.20)
                             core_cell = cell[my:ch-my, mx:cw-mx]
                             if core_cell.size == 0:
                                 core_cell = cell
 
-                            # Farbanalyse im Kernbereich (Grau vs. Farbe)
+                            # PIXEL-GENAUE ANALYSE IM KERNBEREICH
                             r_ch, g_ch, b_ch = cv2.split(core_cell)
-                            color_diff = (np.mean(cv2.absdiff(r_ch, g_ch)) + 
-                                          np.mean(cv2.absdiff(g_ch, b_ch)) + 
-                                          np.mean(cv2.absdiff(r_ch, b_ch)))
+                            diff_rg = cv2.absdiff(r_ch, g_ch)
+                            diff_gb = cv2.absdiff(g_ch, b_ch)
+                            diff_rb = cv2.absdiff(r_ch, b_ch)
+                            pixel_color_diff = diff_rg.astype(float) + diff_gb.astype(float) + diff_rb.astype(float)
                             
                             hsv_core = cv2.cvtColor(core_cell, cv2.COLOR_RGB2HSV)
-                            saturation = np.mean(hsv_core[:, :, 1])
+                            pixel_sat = hsv_core[:, :, 1].astype(float)
                             
-                            # Toleranterer Schwellenwert: Nur wenn im Kernbereich deutliche Farbe/Objekt ist -> Belegt
-                            is_occupied = (color_diff > 14.0) or (saturation > 18)
+                            # Ein Pixel gilt als Auto-Pixel, wenn er sich stark von grau unterscheidet oder farbig ist
+                            car_pixels = (pixel_color_diff > 35) | (pixel_sat > 20)
+                            car_pixel_ratio = np.sum(car_pixels) / core_cell.size
+                            
+                            # Erst wenn mehr als 18% des Kerns durch ein Auto bedeckt sind -> Belegt (Rot)
+                            # Andernfalls gilt der Platz als Frei (Grün)
+                            is_occupied = car_pixel_ratio > 0.18
                             status_text = "frei" if not is_occupied else "belegt"
                             
                             grid_results.append({
@@ -310,7 +316,7 @@ else:
                                 "status": status_text
                             })
                             
-                            # GRÜN für Frei (0, 255, 0 in RGB), ROT für Belegt (255, 0, 0 in RGB)
+                            # GRÜN für Frei, ROT für Belegt
                             box_color = (0, 255, 0) if not is_occupied else (255, 0, 0)
                             cv2.rectangle(annotated_img, (x1, y1), (x2, y2), box_color, 4)
                             
@@ -334,7 +340,7 @@ else:
     elif tab == "Info":
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** Kernbereich-Asphalt- & Farbanalyse")
+        st.write("**KI-Modell:** Pixel-Ratio Kernbereich-Analyse (Falschparker-tolerant)")
         st.write("**Design:** Fixierte untere Navigationsleiste")
 
     # Fixierte untere Navigationsleiste

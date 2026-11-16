@@ -137,7 +137,7 @@ if "spots" not in st.session_state:
     st.session_state.spots = randomize_spot_statuses()
 
 # ==========================================
-# LOGIN SEITE
+# LOGIN SEITE (Mit Bindestrich-Pflicht)
 # ==========================================
 if not st.session_state.logged_in:
     try:
@@ -223,15 +223,16 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: KI-SCAN (Manuelle Rasterwahl bis 12 Plätze mit präziser KI-Analyse)
+    # TAB 3: KI-SCAN (Auswahl von 1x1 bis 4x3 / bis zu 12 Parkplätze)
     elif tab == "KI-Scan":
-        st.subheader("Intelligenter Parkplatz-Scanner")
-        st.write("Wähle das passende Raster für dein Foto aus:")
+        st.subheader("Smart Parkplatz-Konfigurator")
+        st.write("Wähle das Format deines Parkplatz-Fotos aus:")
         
-        # Dropdown-Auswahl für Layouts bis 12 Parkplätze
+        # Auswahlliste wie gewünscht (von 1x1 bis zu 12 Parkplätzen)
         layout_choice = st.selectbox(
-            "Parkplatz-Format wählen:",
+            "Raster-Format wählen:",
             [
+                "1x1 (1 Parkplatz)",
                 "2x1 (2 Parkplätze)",
                 "2x2 (4 Parkplätze)",
                 "3x2 (6 Parkplätze)",
@@ -248,8 +249,10 @@ else:
             img_array = np.array(image)
             h, w, _ = img_array.shape
 
-            # Zeilen und Spalten anhand der Auswahl bestimmen
-            if "2x1" in layout_choice:
+            # Zeilen und Spalten je nach Auswahl festlegen
+            if "1x1" in layout_choice:
+                rows, cols = 1, 1
+            elif "2x1" in layout_choice:
                 rows, cols = 1, 2
             elif "2x2" in layout_choice:
                 rows, cols = 2, 2
@@ -264,7 +267,7 @@ else:
             else:
                 rows, cols = 3, 2
 
-            with st.spinner(f"Analysiere Raster ({rows}x{cols})..."):
+            with st.spinner(f"Analysiere {rows}x{cols} Raster..."):
                 cell_h = h // rows
                 cell_w = w // cols
                 
@@ -279,18 +282,18 @@ else:
                         
                         cell = img_array[y1:y2, x1:x2]
                         if cell.size > 0:
-                            # 1. Farb-Sättigung (für bunte Fahrzeuge)
+                            # 1. Farb-Sättigung prüfen (für bunte Autos)
                             hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
                             saturation = hsv_cell[:, :, 1]
                             avg_sat = np.mean(saturation)
                             
-                            # 2. Textur / Standardabweichung (erkennt weiße, silberne und schwarze Autos auf grauem Asphalt)
+                            # 2. Textur / Standardabweichung prüfen (erkennt weiße, silberne und schwarze Autos auf grauem Asphalt)
                             gray_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2GRAY)
                             std_dev = np.std(gray_cell)
                             
-                            # Wenn Sättigung oder Struktur hoch ist -> Belegt, sonst Frei
-                            is_occupied = (avg_sat > 20) or (std_dev > 16)
-                            status_text = "Belegt" if is_occupied else "Frei"
+                            # Logik: Entweder Farbe weicht ab ODER die Textur (Kanten/Schatten/Scheiben von weißen/schwarzen Autos) ist ungleichmäßig
+                            is_occupied = (avg_sat > 16) or (std_dev > 12)
+                            status_text = "belegt" if is_occupied else "frei"
                             
                             grid_results.append({
                                 "zone": f"P{spot_index}",
@@ -300,18 +303,18 @@ else:
                             color_box = (0, 200, 0) if not is_occupied else (200, 0, 0)
                             cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color_box, 3)
                             
-                            # Text-Label P1, P2 etc. in den Ausschnitt zeichnen
+                            # P-Nummer direkt ins Bild zeichnen
                             cv2.putText(annotated_img, f"P{spot_index}", (x1 + 10, y1 + 30), 
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
                             
                             spot_index += 1
 
-            st.image(annotated_img, caption=f"Raster-Analyse ({len(grid_results)} Plätze geprüft)", use_column_width=True)
+            st.image(annotated_img, caption=f"Analyseergebnis ({len(grid_results)} Parkplätze)", use_column_width=True)
             
             st.write("---")
             st.markdown(f"### 📊 Einzelauswertung:")
             for item in grid_results:
-                if item["status"] == "Frei":
+                if item["status"] == "frei":
                     st.success(f"✅ **{item['zone']} ist frei**")
                 else:
                     st.error(f"🚫 **{item['zone']} ist belegt**")
@@ -320,7 +323,7 @@ else:
     elif tab == "Info":
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** Manuelles Präzisions-Raster (bis 12 Plätze)")
+        st.write("**KI-Modell:** Sättigungs- & Textur-Erkennung (inkl. Weißer-Auto-Erkennung)")
         st.write("**Design:** Fixierte untere Navigationsleiste")
 
     # Fixierte untere Navigationsleiste

@@ -218,10 +218,10 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: KI-SCAN (Automatische Raster-Erkennung für beliebig viele Parkplätze)
+    # TAB 3: KI-SCAN (Linienbasierte automatische Erkennung für 6, 8 oder mehr Plätze)
     elif tab == "KI-Scan":
-        st.subheader("Automatischer Parkplatz-Scanner")
-        st.write("Erkennt die Anzahl der Parkplätze auf dem Bild automatisch und analysiert jeden einzeln:")
+        st.subheader("Linienbasierter Parkplatz-Scanner")
+        st.write("Erkennt Parkplätze anhand der weißen Linien und analysiert jeden einzeln:")
         uploaded_file = st.file_uploader("Luftbild hochladen", type=["jpg", "png", "jpeg"])
 
         if uploaded_file is not None:
@@ -229,50 +229,88 @@ else:
             img_array = np.array(image)
             h, w, _ = img_array.shape
 
-            with st.spinner("Erkenne Formation und teile Parkplätze auf..."):
-                # Automatische Bestimmung der Reihen basierend auf dem Bildformat (Seitenverhältnis)
-                ratio = h / w
-                if ratio > 2.0:
-                    rows = 4  # z.B. 8 Parkplätze (4x2)
-                elif ratio > 2.5:
-                    rows = 5  # z.B. 10 Parkplätze (5x2)
-                elif ratio < 1.3:
-                    rows = 2  # z.B. 4 Parkplätze (2x2)
-                else:
-                    rows = 3  # Standard: 6 Parkplätze (3x2)
-                
-                cols = 2
-                cell_h = h // rows
-                cell_w = w // cols
-                
+            with st.spinner("Erkenne Linien und analysiere Parkplätze..."):
+                # Graustufen und Schwellenwert für weiße Linien
+                gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+                _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
+
+                # Horizontale Projektion (Summe weißer Pixel pro Zeile)
+                row_sums = np.sum(thresh // 255, axis=1)
+                line_indices = np.where(row_sums > (w * 0.15))[0]
+
+                horizontal_lines = []
+                if len(line_indices) > 0:
+                    curr_group = [line_indices[0]]
+                    for idx in line_indices[1:]:
+                        if idx == curr_group[-1] + 1:
+                            curr_group.append(idx)
+                        else:
+                            horizontal_lines.append(int(np.mean(curr_group)))
+                            curr_group = [idx]
+                    horizontal_lines.append(int(np.mean(curr_group)))
+
+                # Linien filtern, die zu nah beieinander liegen
+                filtered_lines = []
+                for l in horizontal_lines:
+                    if not filtered_lines or abs(l - filtered_lines[-1]) > 20:
+                        filtered_lines.append(l)
+
                 grid_results = []
                 annotated_img = img_array.copy()
-
                 spot_index = 1
-                for r in range(rows):
-                    for c in range(cols):
-                        y1, y2 = r * cell_h, (min((r + 1) * cell_h, h))
-                        x1, x2 = c * cell_w, (min((c + 1) * cell_w, w))
-                        
-                        cell = img_array[y1:y2, x1:x2]
-                        if cell.size > 0:
-                            hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
-                            saturation = hsv_cell[:, :, 1]
-                            avg_sat = np.mean(saturation)
-                            
-                            is_occupied = avg_sat > 28
-                            status_text = "Belegt" if is_occupied else "Frei"
-                            
-                            grid_results.append({
-                                "zone": f"Parkplatz P{spot_index}",
-                                "status": status_text
-                            })
-                            
-                            color_box = (0, 200, 0) if not is_occupied else (200, 0, 0)
-                            cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color_box, 3)
-                            spot_index += 1
 
-            st.image(annotated_img, caption=f"Automatische Aufteilung ({len(grid_results)} Parkplätze erkannt)", use_column_width=True)
+                # Wenn mindestens 2 Linien erkannt wurden, Parkplätze anhand der Linien aufspannen
+                if len(filtered_lines) >= 2:
+                    mid_w = w // 2
+                    for i in range(len(filtered_lines) - 1):
+                        y1 = filtered_lines[i]
+                        y2 = filtered_lines[i+1]
+                        
+                        if (y2 - y1) > 15:
+                            # Linker Platz
+                            cell_left = img_array[y1:y2, 0:mid_w]
+                            if cell_left.size > 0:
+                                hsv_l = cv2.cvtColor(cell_left, cv2.COLOR_RGB2HSV)
+                                avg_sat_l = np.mean(hsv_l[:, :, 1])
+                                is_occ_l = avg_sat_l > 28
+                                status_l = "Belegt" if is_occ_l else "Frei"
+                                grid_results.append({"zone": f"Parkplatz P{spot_index}", "status": status_l})
+                                color_l = (0, 200, 0) if not is_occ_l else (200, 0, 0)
+                                cv2.rectangle(annotated_img, (0, y1), (mid_w, y2), color_l, 3)
+                                spot_index += 1
+
+                            # Rechter Platz
+                            cell_right = img_array[y1:y2, mid_w:w]
+                            if cell_right.size > 0:
+                                hsv_r = cv2.cvtColor(cell_right, cv2.COLOR_RGB2HSV)
+                                avg_sat_r = np.mean(hsv_r[:, :, 1])
+                                is_occ_r = avg_sat_r > 28
+                                status_r = "Belegt" if is_occ_r else "Frei"
+                                grid_results.append({"zone": f"Parkplatz P{spot_index}", "status": status_r})
+                                color_r = (0, 200, 0) if not is_occ_r else (200, 0, 0)
+                                cv2.rectangle(annotated_img, (mid_w, y1), (w, y2), color_r, 3)
+                                spot_index += 1
+                else:
+                    # Fallback: Automatische Aufteilung nach Bildformat (6 oder 8 Plätze)
+                    rows = 4 if h > w * 1.5 else 3
+                    cols = 2
+                    cell_h, cell_w = h // rows, w // cols
+                    for r in range(rows):
+                        for c in range(cols):
+                            y1, y2 = r * cell_h, (r + 1) * cell_h
+                            x1, x2 = c * cell_w, (c + 1) * cell_w
+                            cell = img_array[y1:y2, x1:x2]
+                            if cell.size > 0:
+                                hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
+                                avg_sat = np.mean(hsv_cell[:, :, 1])
+                                is_occ = avg_sat > 28
+                                status_text = "Belegt" if is_occ else "Frei"
+                                grid_results.append({"zone": f"Parkplatz P{spot_index}", "status": status_text})
+                                color_box = (0, 200, 0) if not is_occ else (200, 0, 0)
+                                cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color_box, 3)
+                                spot_index += 1
+
+            st.image(annotated_img, caption=f"Linienbasierte Analyse ({len(grid_results)} Parkplätze erkannt)", use_column_width=True)
             
             st.write("---")
             st.markdown(f"### 📊 Einzelauswertung ({len(grid_results)} Plätze):")
@@ -286,7 +324,7 @@ else:
     elif tab == "Info":
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** Automatische Raster- & Farb-Analyse")
+        st.write("**KI-Modell:** Linienbasierte Farb-Analyse")
         st.write("**Design:** Fixierte untere Navigationsleiste")
 
     # Fixierte untere Navigationsleiste

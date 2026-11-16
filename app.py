@@ -137,7 +137,7 @@ if "spots" not in st.session_state:
     st.session_state.spots = randomize_spot_statuses()
 
 # ==========================================
-# LOGIN SEITE (Mit Bindestrich-Pflicht)
+# LOGIN SEITE (Mit Kennzeichen- & Bindestrich-Pflicht)
 # ==========================================
 if not st.session_state.logged_in:
     try:
@@ -223,10 +223,10 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: KI-SCAN (Präzise Raster-Erkennung mit Farb- & Kantenauswertung)
+    # TAB 3: KI-SCAN (Grau = Asphalt/Frei vs. Farbe = Fahrzeug/Belegt)
     elif tab == "KI-Scan":
         st.subheader("Smart Parkplatz-Scanner")
-        st.write("Wähle das Format deines Parkplatz-Fotos aus:")
+        st.write("Wähle das Raster-Format deines Fotos aus:")
         
         # Dropdown-Auswahl bis 12 Parkplätze
         layout_choice = st.selectbox(
@@ -282,18 +282,18 @@ else:
                         
                         cell = img_array[y1:y2, x1:x2]
                         if cell.size > 0:
-                            # 1. Farb-Sättigung (für bunde Autos wie rot, blau etc.)
+                            # GRAU- VS. FARB-ANALYSE
+                            # Bei grauem Asphalt sind die R, G, B Kanäle fast identisch. 
+                            # Bei einem Auto (egal ob rot, blau, schwarz oder weiß) gibt es Farbunterschiede oder eine Farbsättigung.
+                            r_ch, g_ch, b_ch = cv2.split(cell)
+                            color_diff = np.mean(cv2.absdiff(r_ch, g_ch)) + np.mean(cv2.absdiff(g_ch, b_ch)) + np.mean(cv2.absdiff(r_ch, b_ch))
+                            
                             hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
-                            avg_sat = np.mean(hsv_cell[:, :, 1])
+                            saturation = np.mean(hsv_cell[:, :, 1])
                             
-                            # 2. Graustufen-Textur & Kanten (Canny-Edge-Erkennung für weiße, silberne und schwarze Autos)
-                            gray_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2GRAY)
-                            edges = cv2.Canny(gray_cell, 50, 150)
-                            edge_density = np.sum(edges > 0) / edges.size
-                            
-                            # Wenn entweder Farbe (Sättigung) ODER Kanten/Struktur (Auto mit Scheiben/Kanten) vorhanden sind -> Belegt
-                            is_occupied = (avg_sat > 14) or (edge_density > 0.025)
-                            status_text = "belegt" if is_occupied else "frei"
+                            # Wenn signifikante Farbabweichung oder Sättigung vorliegt -> Auto (belegt), sonst Asphalt (frei)
+                            is_occupied = (color_diff > 8.0) or (saturation > 12)
+                            status_text = "frei" if not is_occupied else "belegt"
                             
                             grid_results.append({
                                 "zone": f"P{spot_index}",
@@ -323,7 +323,7 @@ else:
     elif tab == "Info":
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** Farb- & Kanten-Erkennung (für weiße & bunte Autos)")
+        st.write("**KI-Modell:** Grau- vs. Farbanalyse für Vogelperspektiven")
         st.write("**Design:** Fixierte untere Navigationsleiste")
 
     # Fixierte untere Navigationsleiste

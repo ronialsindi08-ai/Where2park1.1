@@ -103,7 +103,7 @@ if "license_plate" not in st.session_state:
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = "Karte"
 
-# Feste Basis-Daten für P1 bis p10 mit GPS-Koordinaten für die Karte
+# Feste Basis-Daten für P1 bis P10 mit GPS-Koordinaten für die Karte
 BASE_SPOTS = [
     {"name": "P1", "distance": 0.3, "price": "1.50 €/Std.", "lat": 53.8680, "lon": 10.6860},
     {"name": "P2", "distance": 0.7, "price": "2.00 €/Std.", "lat": 53.8692, "lon": 10.6895},
@@ -140,7 +140,6 @@ if "spots" not in st.session_state:
 # LOGIN SEITE
 # ==========================================
 if not st.session_state.logged_in:
-    # Logo einbinden (falls vorhanden)
     try:
         st.image("Glänzende Parkplatz-Erkennung mit Check-Symbol.png", use_column_width=True)
     except:
@@ -224,13 +223,23 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: KI-SCAN (Präziser Hybrid-Scanner mit Layout-Wahl für 6 oder 8 Plätze)
+    # TAB 3: KI-SCAN (Manuelle Rasterwahl bis 12 Plätze mit präziser KI-Analyse)
     elif tab == "KI-Scan":
-        st.subheader("Präziser Smart-Scanner")
-        st.write("Wähle das passende Raster und lade das Luftbild hoch:")
+        st.subheader("Intelligenter Parkplatz-Scanner")
+        st.write("Wähle das passende Raster für dein Foto aus:")
         
-        # Layout-Auswahl, damit es zu 100% exakt zu deinen Fotos (6 oder 8 Plätze) passt
-        layout_choice = st.radio("Parkplatz-Layout wählen:", ["6 Parkplätze (3 Reihen × 2 Spalten)", "8 Parkplätze (4 Reihen × 2 Spalten)"], horizontal=True)
+        # Dropdown-Auswahl für Layouts bis 12 Parkplätze
+        layout_choice = st.selectbox(
+            "Parkplatz-Format wählen:",
+            [
+                "2x1 (2 Parkplätze)",
+                "2x2 (4 Parkplätze)",
+                "3x2 (6 Parkplätze)",
+                "4x2 (8 Parkplätze)",
+                "3x3 (9 Parkplätze)",
+                "4x3 (12 Parkplätze)"
+            ]
+        )
         
         uploaded_file = st.file_uploader("Luftbild hochladen", type=["jpg", "png", "jpeg"])
 
@@ -239,13 +248,23 @@ else:
             img_array = np.array(image)
             h, w, _ = img_array.shape
 
-            with st.spinner("Analysiere Parkplätze (Farbe & Textur)..."):
-                if "6 Parkplätze" in layout_choice:
-                    rows = 3
-                else:
-                    rows = 4
-                
-                cols = 2
+            # Zeilen und Spalten anhand der Auswahl bestimmen
+            if "2x1" in layout_choice:
+                rows, cols = 1, 2
+            elif "2x2" in layout_choice:
+                rows, cols = 2, 2
+            elif "3x2" in layout_choice:
+                rows, cols = 3, 2
+            elif "4x2" in layout_choice:
+                rows, cols = 4, 2
+            elif "3x3" in layout_choice:
+                rows, cols = 3, 3
+            elif "4x3" in layout_choice:
+                rows, cols = 4, 3
+            else:
+                rows, cols = 3, 2
+
+            with st.spinner(f"Analysiere Raster ({rows}x{cols})..."):
                 cell_h = h // rows
                 cell_w = w // cols
                 
@@ -260,43 +279,48 @@ else:
                         
                         cell = img_array[y1:y2, x1:x2]
                         if cell.size > 0:
-                            # 1. Farb-Sättigung prüfen (für bunde Autos)
+                            # 1. Farb-Sättigung (für bunte Fahrzeuge)
                             hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
                             saturation = hsv_cell[:, :, 1]
                             avg_sat = np.mean(saturation)
                             
-                            # 2. Textur / Standardabweichung prüfen (erkennt auch weiße und silberne Autos auf grauem Asphalt sicher)
+                            # 2. Textur / Standardabweichung (erkennt weiße, silberne und schwarze Autos auf grauem Asphalt)
                             gray_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2GRAY)
                             std_dev = np.std(gray_cell)
                             
-                            # Kombinierter Check: Entweder Farbe oder Struktur weicht vom Asphalt ab -> Belegt!
-                            is_occupied = (avg_sat > 22) or (std_dev > 18)
+                            # Wenn Sättigung oder Struktur hoch ist -> Belegt, sonst Frei
+                            is_occupied = (avg_sat > 20) or (std_dev > 16)
                             status_text = "Belegt" if is_occupied else "Frei"
                             
                             grid_results.append({
-                                "zone": f"Parkplatz P{spot_index}",
+                                "zone": f"P{spot_index}",
                                 "status": status_text
                             })
                             
                             color_box = (0, 200, 0) if not is_occupied else (200, 0, 0)
                             cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color_box, 3)
+                            
+                            # Text-Label P1, P2 etc. in den Ausschnitt zeichnen
+                            cv2.putText(annotated_img, f"P{spot_index}", (x1 + 10, y1 + 30), 
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                            
                             spot_index += 1
 
-            st.image(annotated_img, caption=f"Analyse erfolgreich ({len(grid_results)} Parkplätze geprüft)", use_column_width=True)
+            st.image(annotated_img, caption=f"Raster-Analyse ({len(grid_results)} Plätze geprüft)", use_column_width=True)
             
             st.write("---")
-            st.markdown(f"### 📊 Einzelauswertung ({len(grid_results)} Plätze):")
+            st.markdown(f"### 📊 Einzelauswertung:")
             for item in grid_results:
                 if item["status"] == "Frei":
-                    st.success(f"✅ **{item['zone']}**: Parkplatz verfügbar")
+                    st.success(f"✅ **{item['zone']} ist frei**")
                 else:
-                    st.error(f"🚫 **{item['zone']}**: Kein Parkplatz verfügbar (Belegt)")
+                    st.error(f"🚫 **{item['zone']} ist belegt**")
 
     # TAB 4: INFO
     elif tab == "Info":
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** Hybride Sättigungs- & Texturanalyse (6/8 Raster)")
+        st.write("**KI-Modell:** Manuelles Präzisions-Raster (bis 12 Plätze)")
         st.write("**Design:** Fixierte untere Navigationsleiste")
 
     # Fixierte untere Navigationsleiste

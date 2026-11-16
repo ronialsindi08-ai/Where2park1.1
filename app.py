@@ -103,7 +103,7 @@ if "license_plate" not in st.session_state:
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = "Karte"
 
-# Feste Basis-Daten für P1 bis P10 mit GPS-Koordinaten für die Karte
+# Feste Basis-Daten für P1 bis p10 mit GPS-Koordinaten für die Karte
 BASE_SPOTS = [
     {"name": "P1", "distance": 0.3, "price": "1.50 €/Std.", "lat": 53.8680, "lon": 10.6860},
     {"name": "P2", "distance": 0.7, "price": "2.00 €/Std.", "lat": 53.8692, "lon": 10.6895},
@@ -140,7 +140,13 @@ if "spots" not in st.session_state:
 # LOGIN SEITE
 # ==========================================
 if not st.session_state.logged_in:
-    st.markdown("<h1 style='text-align: center; color: #0b5ed7; font-size: 2.2rem;'>🅿️ Where to Park</h1>", unsafe_allow_html=True)
+    # Logo einbinden (falls vorhanden)
+    try:
+        st.image("Glänzende Parkplatz-Erkennung mit Check-Symbol.png", use_column_width=True)
+    except:
+        st.markdown("<h1 style='text-align: center; color: #0b5ed7;'>🅿️</h1>", unsafe_allow_html=True)
+
+    st.markdown("<h1 style='text-align: center; color: #0b5ed7; font-size: 2rem;'>Where to Park</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #6c757d;'>AI PARKING ASSIST</p>", unsafe_allow_html=True)
     
     st.write("")
@@ -218,10 +224,14 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # TAB 3: KI-SCAN (Erweiterte Hybrid-Erkennung für weiße, schwarze und bunte Autos)
+    # TAB 3: KI-SCAN (Präziser Hybrid-Scanner mit Layout-Wahl für 6 oder 8 Plätze)
     elif tab == "KI-Scan":
         st.subheader("Präziser Smart-Scanner")
-        st.write("Erkennt Fahrzeuge (auch weiße/silberne) zuverlässig durch Farb- und Texturanalyse:")
+        st.write("Wähle das passende Raster und lade das Luftbild hoch:")
+        
+        # Layout-Auswahl, damit es zu 100% exakt zu deinen Fotos (6 oder 8 Plätze) passt
+        layout_choice = st.radio("Parkplatz-Layout wählen:", ["6 Parkplätze (3 Reihen × 2 Spalten)", "8 Parkplätze (4 Reihen × 2 Spalten)"], horizontal=True)
+        
         uploaded_file = st.file_uploader("Luftbild hochladen", type=["jpg", "png", "jpeg"])
 
         if uploaded_file is not None:
@@ -229,9 +239,12 @@ else:
             img_array = np.array(image)
             h, w, _ = img_array.shape
 
-            with st.spinner("Analysiere Parkplätze und Fahrzeuge..."):
-                # Dynamische Bestimmung: Wenn das Bild länger ist, nehmen wir 8 Plätze (4x2), sonst 6 Plätze (3x2)
-                rows = 4 if (h / w) > 1.6 else 3
+            with st.spinner("Analysiere Parkplätze (Farbe & Textur)..."):
+                if "6 Parkplätze" in layout_choice:
+                    rows = 3
+                else:
+                    rows = 4
+                
                 cols = 2
                 cell_h = h // rows
                 cell_w = w // cols
@@ -247,18 +260,17 @@ else:
                         
                         cell = img_array[y1:y2, x1:x2]
                         if cell.size > 0:
-                            # 1. Farb-Sättigung prüfen (für bunte Autos)
+                            # 1. Farb-Sättigung prüfen (für bunde Autos)
                             hsv_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
                             saturation = hsv_cell[:, :, 1]
                             avg_sat = np.mean(saturation)
                             
-                            # 2. Helligkeits-Standardabweichung prüfen (erkennt weiße/silberne/schwarze Autos auf grauem Asphalt)
+                            # 2. Textur / Standardabweichung prüfen (erkennt auch weiße und silberne Autos auf grauem Asphalt sicher)
                             gray_cell = cv2.cvtColor(cell, cv2.COLOR_RGB2GRAY)
                             std_dev = np.std(gray_cell)
                             
-                            # Ein Parkplatz gilt als belegt, wenn entweder Farbe (Sättigung) oder Struktur/Kontrast (Weißes/Dunkles Auto) abweicht
-                            # Leerer Asphalt hat eine sehr niedrige Standardabweichung und Sättigung.
-                            is_occupied = (avg_sat > 25) or (std_dev > 22)
+                            # Kombinierter Check: Entweder Farbe oder Struktur weicht vom Asphalt ab -> Belegt!
+                            is_occupied = (avg_sat > 22) or (std_dev > 18)
                             status_text = "Belegt" if is_occupied else "Frei"
                             
                             grid_results.append({
@@ -270,7 +282,7 @@ else:
                             cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color_box, 3)
                             spot_index += 1
 
-            st.image(annotated_img, caption=f"Präzisions-Scan ({len(grid_results)} Parkplätze analysiert)", use_column_width=True)
+            st.image(annotated_img, caption=f"Analyse erfolgreich ({len(grid_results)} Parkplätze geprüft)", use_column_width=True)
             
             st.write("---")
             st.markdown(f"### 📊 Einzelauswertung ({len(grid_results)} Plätze):")
@@ -284,7 +296,7 @@ else:
     elif tab == "Info":
         st.subheader("System-Details")
         st.write(f"**Angemeldetes Fahrzeug:** {st.session_state.license_plate}")
-        st.write("**KI-Modell:** Hybrid Sättigungs- & Textur-Analyse")
+        st.write("**KI-Modell:** Hybride Sättigungs- & Texturanalyse (6/8 Raster)")
         st.write("**Design:** Fixierte untere Navigationsleiste")
 
     # Fixierte untere Navigationsleiste
